@@ -4,6 +4,23 @@ import { useEffect, useState } from "react";
 import { useRef, useCallback } from "react";
 import axios from "../../lib/axios";
 
+const PAGE_SIZE = 102;
+
+function dedupeJobs(jobList) {
+  const seen = new Set();
+
+  return jobList.filter((job) => {
+    const uniqueKey = `${job.id}-${job.url}`;
+
+    if (seen.has(uniqueKey)) {
+      return false;
+    }
+
+    seen.add(uniqueKey);
+    return true;
+  });
+}
+
 export default function JobsPage() {
   //States
   const [jobs, setJobs] = useState([]);
@@ -22,11 +39,10 @@ export default function JobsPage() {
           "https://remotive.com/api/remote-jobs"
         );
         console.log(response);
+        const uniqueJobs = dedupeJobs(response.data.jobs);
 
-        setJobs((prevJobs) => [...prevJobs, ...response.data.jobs]);
-        setVisibleJobs((prevJobs) =>
-          [...prevJobs, ...response.data.jobs].slice(0, 102)
-        );
+        setJobs(uniqueJobs);
+        setVisibleJobs(uniqueJobs.slice(0, PAGE_SIZE));
       } catch (error) {
         console.error("error fetching jobs", error);
       } finally {
@@ -37,10 +53,18 @@ export default function JobsPage() {
     fetchJobs();
   }, []);
 
-  const loadMore = () => {
-    const next = jobs.slice(visibleJobs.length, visibleJobs.length + 102);
-    setVisibleJobs([...visibleJobs, ...next]);
-  };
+  const loadMore = useCallback(() => {
+    setVisibleJobs((currentVisibleJobs) => {
+      const next = jobs.slice(
+        currentVisibleJobs.length,
+        currentVisibleJobs.length + PAGE_SIZE
+      );
+
+      return next.length === 0
+        ? currentVisibleJobs
+        : [...currentVisibleJobs, ...next];
+    });
+  }, [jobs]);
 
   const lastJobRef = useCallback(
     (node) => {
@@ -57,6 +81,15 @@ export default function JobsPage() {
       if (node) observer.current.observe(node); // attach observer to new last node
     },
     [loading, loadMore]
+  );
+
+  const filteredJobs = visibleJobs.filter(
+    (job) =>
+      job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.company_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      job.candidate_required_location
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -80,28 +113,17 @@ export default function JobsPage() {
 
       <div>
         <div className="grid grid-cols-1 sm:cols-2 lg:grid-cols-3 gap-8 mt-6">
-          {visibleJobs
-            .filter(
-              (jobs) =>
-                jobs.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                jobs.company_name
-                  .toLowerCase()
-                  .includes(searchTerm.toLowerCase()) ||
-                jobs.candidate_required_location
-                  .toLowerCase()
-                  .includes(searchTerm.toLowerCase())
-            )
-            .map((job, index) => {
+          {filteredJobs.map((job, index) => {
               const date = new Date(job.publication_date);
               const formattedDate = date.toLocaleDateString("en-US", {
                 year: "numeric",
                 month: "long",
                 day: "numeric",
               });
-              const isLastJob = index === visibleJobs.length - 1;
+              const isLastJob = index === filteredJobs.length - 1;
               return (
                 <div
-                  key={job.id}
+                  key={`${job.id}-${job.url}`}
                   ref={isLastJob ? lastJobRef : null}
                   className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-lg hover:shadow-purple-800/40 transition-shadow duration-300"
                 >
