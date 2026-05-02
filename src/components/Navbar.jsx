@@ -4,13 +4,25 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+
+const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [bookmarkCount, setBookmarkCount] = useState(0);
+  const [appliedCount, setAppliedCount] = useState(0);
   const pathname = usePathname();
+  const rawDisplayName =
+    user?.user_metadata?.full_name?.trim() ||
+    user?.user_metadata?.name?.trim() ||
+    user?.identities?.[0]?.identity_data?.full_name?.trim() ||
+    user?.identities?.[0]?.identity_data?.name?.trim() ||
+    user?.email?.split("@")?.[0] ||
+    "";
+  const displayName = rawDisplayName.split(" ")[0] || "";
 
   useEffect(() => {
     let isMounted = true;
@@ -35,6 +47,55 @@ export default function Navbar() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const loadNavCounts = async () => {
+      if (!user) {
+        setBookmarkCount(0);
+        setAppliedCount(0);
+        return;
+      }
+
+      const [{ count: savedCount, error: savedError }, { count: trackedCount, error: trackedError }] =
+        await Promise.all([
+          supabase
+            .from("jobs")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("is_saved", true),
+          supabase
+            .from("jobs")
+            .select("*", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .not("applied_at", "is", null),
+        ]);
+
+      if (savedError) {
+        console.error("Failed to load bookmark count", savedError);
+      } else {
+        setBookmarkCount(savedCount || 0);
+      }
+
+      if (trackedError) {
+        console.error("Failed to load applied count", trackedError);
+      } else {
+        setAppliedCount(trackedCount || 0);
+      }
+    };
+
+    loadNavCounts();
+
+    const handleBookmarksUpdated = (event) => {
+      const delta = Number(event?.detail?.delta);
+      if (!Number.isFinite(delta) || delta === 0) return;
+      setBookmarkCount((current) => Math.max(0, current + delta));
+    };
+
+    window.addEventListener(BOOKMARKS_UPDATED_EVENT, handleBookmarksUpdated);
+    return () => {
+      window.removeEventListener(BOOKMARKS_UPDATED_EVENT, handleBookmarksUpdated);
+    };
+  }, [user, pathname]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -86,28 +147,46 @@ export default function Navbar() {
           <li>
             <Link
               href="/bookmarks"
-              className="hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
+              className="relative inline-flex hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
             >
               Bookmarks
+              {bookmarkCount > 0 ? (
+                <span className="absolute -top-2 -right-4 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                  {bookmarkCount}
+                </span>
+              ) : null}
             </Link>
           </li>
           <li>
             <Link
               href="/applied"
-              className="hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
+              className="relative inline-flex hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
             >
               Applied
+              {appliedCount > 0 ? (
+                <span className="absolute -top-2 -right-4 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                  {appliedCount}
+                </span>
+              ) : null}
             </Link>
           </li>
           <li>
             {user ? (
-              <button
-                type="button"
-                onClick={signOut}
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs sm:text-sm hover:border-purple-500 hover:text-purple-300 transition whitespace-nowrap"
-              >
-                Sign out
-              </button>
+              <div className="flex items-center gap-2 whitespace-nowrap">
+                <span className="text-zinc-300 text-sm sm:text-base font-medium">
+                  <span className="hidden lg:inline mr-2">| </span>
+                  {displayName}
+                </span>
+                <button
+                  type="button"
+                  onClick={signOut}
+                  className="rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
+                  aria-label="Sign out"
+                  title="Sign out"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
             ) : (
               <Link
                 href="/login"
@@ -179,37 +258,52 @@ export default function Navbar() {
               <Link
                 href="/bookmarks"
                 onClick={() => setMobileOpen(false)}
-                className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
+                className={`sidebar-nav-item relative block w-full rounded-lg px-3 py-3 transition ${
                   pathname === "/bookmarks"
                     ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
                     : "text-white"
                 }`}
               >
                 Bookmarks
+                {bookmarkCount > 0 ? (
+                  <span className="absolute top-2 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                    {bookmarkCount}
+                  </span>
+                ) : null}
               </Link>
             </li>
             <li className="w-full">
               <Link
                 href="/applied"
                 onClick={() => setMobileOpen(false)}
-                className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
+                className={`sidebar-nav-item relative block w-full rounded-lg px-3 py-3 transition ${
                   pathname === "/applied"
                     ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
                     : "text-white"
                 }`}
               >
                 Applied
+                {appliedCount > 0 ? (
+                  <span className="absolute top-2 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                    {appliedCount}
+                  </span>
+                ) : null}
               </Link>
             </li>
             <li className="pt-4 w-full">
               {user ? (
-                <button
-                  type="button"
-                  onClick={signOut}
-                  className="sidebar-nav-item w-full rounded-lg border border-zinc-700 px-3 py-2 text-sm text-white hover:border-purple-500 hover:text-purple-300 transition"
-                >
-                  Sign out
-                </button>
+                <div className="sidebar-nav-item mb-3 w-full rounded-lg border border-zinc-800 px-3 py-2 flex items-center justify-between">
+                  <p className="text-base font-medium text-zinc-300">{displayName}</p>
+                  <button
+                    type="button"
+                    onClick={signOut}
+                    className="rounded-lg border border-zinc-700 p-2 text-white hover:border-purple-500 hover:text-purple-300 transition"
+                    aria-label="Sign out"
+                    title="Sign out"
+                  >
+                    <LogOut size={16} />
+                  </button>
+                </div>
               ) : (
                 <Link
                   href="/login"

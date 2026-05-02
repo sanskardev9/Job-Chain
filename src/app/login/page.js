@@ -64,13 +64,20 @@ function LoginPageContent() {
     setLoading(true);
     setMessage("");
     setErrorMessage("");
+    const normalizedName = name.trim();
+
+    if (!normalizedName) {
+      setErrorMessage("Please enter your full name.");
+      setLoading(false);
+      return;
+    }
 
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
       options: {
         data: {
-          full_name: name.trim(),
+          full_name: normalizedName,
         },
       },
     });
@@ -82,6 +89,13 @@ function LoginPageContent() {
     }
 
     if (data.session) {
+      // Ensure full_name is persisted in auth metadata for immediate-session signups.
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { full_name: normalizedName },
+      });
+      if (updateError) {
+        console.error("Failed to persist signup name in auth metadata", updateError);
+      }
       router.replace(redirectTo);
       setLoading(false);
       return;

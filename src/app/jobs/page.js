@@ -11,6 +11,7 @@ const PAGE_SIZE = 102;
 const TRACKED_JOBS_KEY = "jobchain_tracked_jobs";
 const SAVED_JOBS_KEY = "jobchain_saved_jobs";
 const PENDING_APPLY_KEY = "jobchain_pending_apply";
+const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 
 function dedupeJobs(jobList) {
   const seen = new Set();
@@ -40,23 +41,30 @@ function buildTrackedPayload(job, status, existing) {
 }
 
 async function upsertTrackedJob(userId, job, status) {
-  const { data: existingRow, error: fetchError } = await supabase
+  const jobUrl = job?.url || job?.job_url;
+  if (!userId || !jobUrl) {
+    throw new Error("Missing user id or job url while tracking applied job");
+  }
+
+  const { data: existingRows, error: fetchError } = await supabase
     .from("jobs")
     .select("id, applied_at")
     .eq("user_id", userId)
-    .eq("job_url", job.url)
-    .maybeSingle();
+    .eq("job_url", jobUrl)
+    .order("created_at", { ascending: false });
 
   if (fetchError) {
     throw fetchError;
   }
+
+  const existingRow = Array.isArray(existingRows) ? existingRows[0] : null;
 
   const payload = {
     user_id: userId,
     title: job.title,
     company: job.company_name,
     location: job.candidate_required_location,
-    job_url: job.url,
+    job_url: jobUrl,
     status,
     applied_at: existingRow?.applied_at || new Date().toISOString(),
   };
@@ -81,7 +89,9 @@ export default function JobsPage() {
   const [savingJobKey, setSavingJobKey] = useState("");
   const [user, setUser] = useState(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [loginPromptAction, setLoginPromptAction] = useState("apply");
   const [pendingApplyJob, setPendingApplyJob] = useState(null);
+  const [toastMessage, setToastMessage] = useState("");
 
   const observer = useRef();
   const router = useRouter();
@@ -217,6 +227,12 @@ export default function JobsPage() {
     fetchJobs();
   }, []);
 
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(""), 1800);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
   const loadMore = useCallback(() => {
     setVisibleJobs((currentVisibleJobs) => {
       const next = jobs.slice(
@@ -262,7 +278,8 @@ export default function JobsPage() {
 
   const handleToggleSave = useCallback(async (job) => {
     if (!user) {
-      router.push("/login?redirect=/jobs");
+      setLoginPromptAction("bookmark");
+      setShowLoginPrompt(true);
       return;
     }
 
@@ -287,6 +304,11 @@ export default function JobsPage() {
         delete next[job.url];
         return next;
       });
+      window.dispatchEvent(
+        new CustomEvent(BOOKMARKS_UPDATED_EVENT, {
+          detail: { delta: -1 },
+        })
+      );
       setSavingJobKey("");
       return;
     }
@@ -321,11 +343,18 @@ export default function JobsPage() {
         url: data.job_url,
       },
     }));
+    window.dispatchEvent(
+      new CustomEvent(BOOKMARKS_UPDATED_EVENT, {
+        detail: { delta: 1 },
+      })
+    );
+    setToastMessage("Added to bookmarks");
     setSavingJobKey("");
   }, [router, savedJobs, user]);
 
   const handleApply = useCallback(async (job) => {
     if (!user) {
+      setLoginPromptAction("apply");
       setPendingApplyJob({
         id: job.id,
         title: job.title,
@@ -337,23 +366,34 @@ export default function JobsPage() {
       return;
     }
 
-    setSavingJobKey(job.url);
+    const jobUrl = job?.url || job?.job_url;
+    if (!jobUrl) {
+      console.error("Cannot apply to job without url", job);
+      return;
+    }
+
+    setSavingJobKey(jobUrl);
 
     setTrackedJobs((prev) => {
-      const existing = prev[job.url];
+      const existing = prev[jobUrl];
       return {
         ...prev,
-        [job.url]: buildTrackedPayload(job, "applied", existing),
+        [jobUrl]: buildTrackedPayload({ ...job, url: jobUrl }, "applied", existing),
       };
     });
 
     try {
       await upsertTrackedJob(user.id, job, "applied");
     } catch (error) {
-      console.error("Failed to persist applied job", error);
+      console.error("Failed to persist applied job", {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+      });
     }
 
-    window.open(job.url, "_blank", "noopener,noreferrer");
+    window.open(jobUrl, "_blank", "noopener,noreferrer");
     setSavingJobKey("");
   }, [user]);
 
@@ -431,7 +471,7 @@ export default function JobsPage() {
   }
 
   return (
-    <div className="min-h-full bg-zinc-950 px-6 text-white">
+    <div className="min-h-full bg-zinc-950 px-6 text-white pb-6">
       <div className="flex flex-col items-center justify-center w-content">
         <h1 className="text-3xl font-extrabold mb-3 sm:mb-6 mt-6 sm:mt-6 tracking-tight text-white sm:text-5xl hover:text-purple-500 hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] transition duration-300">
           Job Listing
@@ -485,12 +525,17 @@ export default function JobsPage() {
           <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
             <h2 className="text-xl font-bold text-white">Sign in required</h2>
             <p className="mt-2 text-zinc-400 text-sm">
-              You need to sign in before applying to a job.
+              {loginPromptAction === "bookmark"
+                ? "You need to sign in before bookmarking a job."
+                : "You need to sign in before applying to a job."}
             </p>
             <div className="mt-5 flex items-center justify-end gap-3">
               <button
                 type="button"
-                onClick={() => setShowLoginPrompt(false)}
+                onClick={() => {
+                  setShowLoginPrompt(false);
+                  setPendingApplyJob(null);
+                }}
                 className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-zinc-500 transition cursor-pointer"
               >
                 Cancel
@@ -498,7 +543,7 @@ export default function JobsPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (pendingApplyJob) {
+                  if (loginPromptAction === "apply" && pendingApplyJob) {
                     localStorage.setItem(PENDING_APPLY_KEY, JSON.stringify(pendingApplyJob));
                   }
                   router.push("/login?redirect=/jobs");
@@ -509,6 +554,12 @@ export default function JobsPage() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {toastMessage ? (
+        <div className="fixed top-20 right-6 z-50 rounded-xl border border-purple-500/40 bg-zinc-900 px-4 py-2 text-sm font-medium text-purple-200 shadow-lg shadow-purple-900/30">
+          {toastMessage}
         </div>
       ) : null}
     </div>
