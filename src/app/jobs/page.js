@@ -97,17 +97,38 @@ export default function JobsPage() {
   const router = useRouter();
 
   useEffect(() => {
+    const clearClientJobState = () => {
+      setTrackedJobs({});
+      setSavedJobs({});
+      setSavingJobKey("");
+      setShowLoginPrompt(false);
+      setPendingApplyJob(null);
+      try {
+        localStorage.removeItem(TRACKED_JOBS_KEY);
+        localStorage.removeItem(SAVED_JOBS_KEY);
+        localStorage.removeItem(PENDING_APPLY_KEY);
+      } catch (error) {
+        console.error("Failed to clear local job state", error);
+      }
+    };
+
     const loadUser = async () => {
       const { data } = await supabase.auth.getUser();
       setUser(data.user ?? null);
+      if (!data.user) {
+        clearClientJobState();
+      }
     };
 
     loadUser();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setUser(session?.user ?? null);
+      if (event === "SIGNED_OUT" || !session?.user) {
+        clearClientJobState();
+      }
     });
 
     return () => {
@@ -374,6 +395,11 @@ export default function JobsPage() {
 
     setSavingJobKey(jobUrl);
 
+    const openedWindow = window.open(jobUrl, "_blank", "noopener,noreferrer");
+    if (!openedWindow) {
+      window.location.assign(jobUrl);
+    }
+
     setTrackedJobs((prev) => {
       const existing = prev[jobUrl];
       return {
@@ -393,7 +419,6 @@ export default function JobsPage() {
       });
     }
 
-    window.open(jobUrl, "_blank", "noopener,noreferrer");
     setSavingJobKey("");
   }, [user]);
 

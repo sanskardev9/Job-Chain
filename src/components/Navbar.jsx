@@ -14,6 +14,9 @@ export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [bookmarkCount, setBookmarkCount] = useState(0);
   const [appliedCount, setAppliedCount] = useState(0);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
   const pathname = usePathname();
   const rawDisplayName =
     user?.user_metadata?.full_name?.trim() ||
@@ -97,8 +100,22 @@ export default function Navbar() {
     };
   }, [user, pathname]);
 
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = setTimeout(() => setToastMessage(""), 1800);
+    return () => clearTimeout(timer);
+  }, [toastMessage]);
+
+  const requestSignOut = () => {
+    setShowSignOutConfirm(true);
+  };
+
   const signOut = async () => {
+    setSigningOut(true);
     await supabase.auth.signOut();
+    setShowSignOutConfirm(false);
+    setToastMessage("Signed out successfully");
+    setSigningOut(false);
     setMobileOpen(false);
   };
 
@@ -179,7 +196,7 @@ export default function Navbar() {
                 </span>
                 <button
                   type="button"
-                  onClick={signOut}
+                  onClick={requestSignOut}
                   className="rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
                   aria-label="Sign out"
                   title="Sign out"
@@ -266,7 +283,7 @@ export default function Navbar() {
               >
                 Bookmarks
                 {bookmarkCount > 0 ? (
-                  <span className="absolute top-2 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                  <span className="absolute top-4 sm:top-2 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
                     {bookmarkCount}
                   </span>
                 ) : null}
@@ -284,7 +301,7 @@ export default function Navbar() {
               >
                 Applied
                 {appliedCount > 0 ? (
-                  <span className="absolute top-2 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                  <span className="absolute top-4 sm:top-2 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
                     {appliedCount}
                   </span>
                 ) : null}
@@ -296,7 +313,7 @@ export default function Navbar() {
                   <p className="text-base font-medium text-zinc-300">{displayName}</p>
                   <button
                     type="button"
-                    onClick={signOut}
+                    onClick={requestSignOut}
                     className="rounded-lg border border-zinc-700 p-2 text-white hover:border-purple-500 hover:text-purple-300 transition"
                     aria-label="Sign out"
                     title="Sign out"
@@ -317,6 +334,41 @@ export default function Navbar() {
           </ul>
         </aside>
       </div>
+
+      {showSignOutConfirm ? (
+        <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center px-4">
+          <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-white">Confirm sign out</h3>
+            <p className="mt-2 text-sm text-zinc-400">
+              Are you sure you want to sign out of Job-Chain?
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSignOutConfirm(false)}
+                disabled={signingOut}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-zinc-500 transition disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={signOut}
+                disabled={signingOut}
+                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-60"
+              >
+                {signingOut ? "Signing out..." : "Sign out"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {toastMessage ? (
+        <div className="fixed top-20 right-6 z-[80] rounded-xl border border-purple-500/40 bg-zinc-900 px-4 py-2 text-sm font-medium text-purple-200 shadow-lg shadow-purple-900/30">
+          {toastMessage}
+        </div>
+      ) : null}
     </header>
   );
 }
