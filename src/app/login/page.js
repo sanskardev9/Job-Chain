@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 
-export default function LoginPage() {
+function LoginPageContent() {
   const [loading, setLoading] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
   const [name, setName] = useState("");
@@ -187,5 +187,13 @@ export default function LoginPage() {
         {message ? <p className="mt-4 text-sm text-emerald-400">{message}</p> : null}
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   );
 }
