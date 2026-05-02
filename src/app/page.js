@@ -13,7 +13,7 @@ export default function Home() {
   };
 
   return (
-    <div className="h-[82.5vh] bg-zinc-950 text-white flex flex-col items-center  px-6 py-20">
+    <div className="min-h-full bg-zinc-950 text-white flex flex-col items-center px-6 py-20">
       {/* Main Content */}
       <main className="text-center w-full max-w-3xl">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
