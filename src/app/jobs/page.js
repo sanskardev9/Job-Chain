@@ -39,6 +39,38 @@ function buildTrackedPayload(job, status, existing) {
   };
 }
 
+async function upsertTrackedJob(userId, job, status) {
+  const { data: existingRow, error: fetchError } = await supabase
+    .from("jobs")
+    .select("id, applied_at")
+    .eq("user_id", userId)
+    .eq("job_url", job.url)
+    .maybeSingle();
+
+  if (fetchError) {
+    throw fetchError;
+  }
+
+  const payload = {
+    user_id: userId,
+    title: job.title,
+    company: job.company_name,
+    location: job.candidate_required_location,
+    job_url: job.url,
+    status,
+    applied_at: existingRow?.applied_at || new Date().toISOString(),
+  };
+
+  if (existingRow?.id) {
+    const { error } = await supabase.from("jobs").update(payload).eq("id", existingRow.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from("jobs").insert(payload);
+  if (error) throw error;
+}
+
 export default function JobsPage() {
   const [jobs, setJobs] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -122,7 +154,7 @@ export default function JobsPage() {
         return acc;
       }, {});
 
-      setTrackedJobs(mapped);
+      setTrackedJobs((prev) => ({ ...prev, ...mapped }));
     };
 
     loadTrackedFromBackend();
@@ -292,7 +324,7 @@ export default function JobsPage() {
     setSavingJobKey("");
   }, [router, savedJobs, user]);
 
-  const handleApply = useCallback((job) => {
+  const handleApply = useCallback(async (job) => {
     if (!user) {
       setPendingApplyJob({
         id: job.id,
@@ -315,11 +347,17 @@ export default function JobsPage() {
       };
     });
 
+    try {
+      await upsertTrackedJob(user.id, job, "applied");
+    } catch (error) {
+      console.error("Failed to persist applied job", error);
+    }
+
     window.open(job.url, "_blank", "noopener,noreferrer");
     setSavingJobKey("");
   }, [user]);
 
-  const handleStatusChange = useCallback((job, status) => {
+  const handleStatusChange = useCallback(async (job, status) => {
     setSavingJobKey(job.url);
 
     setTrackedJobs((prev) => {
@@ -336,36 +374,52 @@ export default function JobsPage() {
       };
     });
 
+    try {
+      await upsertTrackedJob(user.id, job, status);
+    } catch (error) {
+      console.error("Failed to persist job status", error);
+    }
+
     setSavingJobKey("");
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (!user) return;
 
-    const raw = localStorage.getItem(PENDING_APPLY_KEY);
-    if (!raw) return;
+    const handlePendingApply = async () => {
+      const raw = localStorage.getItem(PENDING_APPLY_KEY);
+      if (!raw) return;
 
-    try {
-      const job = JSON.parse(raw);
-      if (!job?.url) {
+      try {
+        const job = JSON.parse(raw);
+        if (!job?.url) {
+          localStorage.removeItem(PENDING_APPLY_KEY);
+          return;
+        }
+
+        setTrackedJobs((prev) => {
+          const existing = prev[job.url];
+          return {
+            ...prev,
+            [job.url]: buildTrackedPayload(job, "applied", existing),
+          };
+        });
+
+        try {
+          await upsertTrackedJob(user.id, job, "applied");
+        } catch (error) {
+          console.error("Failed to persist pending apply job", error);
+        }
+
+        window.open(job.url, "_blank", "noopener,noreferrer");
         localStorage.removeItem(PENDING_APPLY_KEY);
-        return;
+      } catch (error) {
+        console.error("Failed to handle pending apply job", error);
+        localStorage.removeItem(PENDING_APPLY_KEY);
       }
+    };
 
-      setTrackedJobs((prev) => {
-        const existing = prev[job.url];
-        return {
-          ...prev,
-          [job.url]: buildTrackedPayload(job, "applied", existing),
-        };
-      });
-
-      window.open(job.url, "_blank", "noopener,noreferrer");
-      localStorage.removeItem(PENDING_APPLY_KEY);
-    } catch (error) {
-      console.error("Failed to handle pending apply job", error);
-      localStorage.removeItem(PENDING_APPLY_KEY);
-    }
+    handlePendingApply();
   }, [user]);
 
   if (loading && visibleJobs.length === 0) {
