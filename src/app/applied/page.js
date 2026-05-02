@@ -37,7 +37,9 @@ export default function AppliedPage() {
 
       const { data, error } = await supabase
         .from("jobs")
-        .select("id, title, company, location, job_url, status, applied_at, created_at")
+        .select(
+          "id, title, company, location, job_url, status, applied_at, created_at",
+        )
         .eq("user_id", currentUser.id)
         .not("applied_at", "is", null)
         .order("applied_at", { ascending: false });
@@ -85,7 +87,9 @@ export default function AppliedPage() {
     }
 
     setJobs((prev) =>
-      prev.map((job) => (job.id === jobId ? { ...job, status: nextStatus } : job))
+      prev.map((job) =>
+        job.id === jobId ? { ...job, status: nextStatus } : job,
+      ),
     );
     setUpdatingId("");
   };
@@ -108,7 +112,9 @@ export default function AppliedPage() {
       <div className="min-h-[calc(100svh-9rem)] bg-zinc-950 text-white px-6 flex items-center justify-center">
         <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center">
           <h1 className="text-2xl font-bold">Sign in to see applied jobs</h1>
-          <p className="mt-3 text-zinc-400">Your applied list is stored in your account.</p>
+          <p className="mt-3 text-zinc-400">
+            Your applied list is stored in your account.
+          </p>
           <Link
             href="/login?redirect=/applied"
             className="inline-block mt-6 rounded-xl bg-white px-4 py-2 text-black font-semibold hover:bg-purple-600 hover:text-white transition"
@@ -121,7 +127,7 @@ export default function AppliedPage() {
   }
 
   return (
-    <div className="min-h-full bg-zinc-950 px-6 text-white">
+    <div className="min-h-full bg-zinc-950 px-6 text-white pb-6">
       <div className="flex flex-col items-center justify-center w-content">
         <h1 className="text-3xl font-extrabold mb-3 sm:mb-6 mt-6 sm:mt-6 tracking-tight text-white sm:text-5xl hover:text-purple-500 hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] transition duration-300">
           Applied Jobs
@@ -132,9 +138,13 @@ export default function AppliedPage() {
       </div>
 
       <div className="max-w-5xl mx-auto py-4">
-
-        <div className="mt-6 max-w-xs mx-auto sm:mx-0 relative z-20" ref={filterRef}>
-          <label className="block text-xs text-zinc-400 mb-2">Filter by status</label>
+        <div
+          className="mt-6 max-w-xs mx-auto sm:mx-0 relative z-20"
+          ref={filterRef}
+        >
+          <label className="block text-xs text-zinc-400 mb-2">
+            Filter by status
+          </label>
           <button
             type="button"
             onClick={() => setFilterOpen((value) => !value)}
@@ -161,46 +171,60 @@ export default function AppliedPage() {
                 : "pointer-events-none opacity-0 -translate-y-2 scale-95"
             }`}
           >
-              {FILTER_OPTIONS.map((filter) => {
-                const selected = activeFilter === filter;
-                const label =
-                  filter === "all"
-                    ? "All"
-                    : filter.charAt(0).toUpperCase() + filter.slice(1);
+            {FILTER_OPTIONS.map((filter) => {
+              const selected = activeFilter === filter;
+              const label =
+                filter === "all"
+                  ? "All"
+                  : filter.charAt(0).toUpperCase() + filter.slice(1);
 
-                return (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => {
-                      setActiveFilter(filter);
-                      setFilterOpen(false);
-                    }}
-                    className={`w-full text-left rounded-lg px-3 py-2 text-sm transition ${
-                      selected
-                        ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
-                        : "text-zinc-200 hover:bg-zinc-800 hover:text-purple-300"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => {
+                    setActiveFilter(filter);
+                    setFilterOpen(false);
+                  }}
+                  className={`w-full text-left rounded-lg px-3 py-2 text-sm transition ${
+                    selected
+                      ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
+                      : "text-zinc-200 hover:bg-zinc-800 hover:text-purple-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         {filteredJobs.length === 0 ? (
-          <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-zinc-300">
-            No jobs found for this status.
+          <div className="mt-8 rounded-2xl text-center border border-zinc-800 bg-zinc-900 p-8 text-zinc-300">
+            {activeFilter === "all" ? (
+              <div>
+                <p className="text-lg font-semibold text-white">
+                  No applications yet
+                </p>
+                <p className="mt-2 text-zinc-400 italic">
+                  Your next opportunity is just one click away — start now.
+                </p>
+              </div>
+            ) : (
+              "No jobs found for this status."
+            )}
           </div>
         ) : (
           <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
             {filteredJobs.map((job) => {
-              const appliedDate = new Date(job.applied_at).toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              });
+              const appliedDate = new Date(job.applied_at).toLocaleDateString(
+                "en-US",
+                {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                },
+              );
 
               return (
                 <div
@@ -208,14 +232,18 @@ export default function AppliedPage() {
                   className="relative flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg hover:shadow-purple-800/40 transition-shadow duration-300"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <h2 className="text-4 text-xl font-semibold text-white">{job.title}</h2>
+                    <h2 className="text-4 text-xl font-semibold text-white">
+                      {job.title}
+                    </h2>
                     <span
                       className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[job.status || "applied"]}`}
                     >
                       {job.status || "applied"}
                     </span>
                   </div>
-                  <p className="text-zinc-300 font-medium mt-1">{job.company}</p>
+                  <p className="text-zinc-300 font-medium mt-1">
+                    {job.company}
+                  </p>
                   <p className="text-zinc-500 italic mt-3">{job.location}</p>
                   <p className="text-zinc-200 mt-3">Applied on {appliedDate}</p>
 

@@ -20,12 +20,16 @@ function JobCardBase({
   onToggleSave,
   onApply,
 }) {
-  const date = new Date(job.publication_date);
-  const formattedDate = date.toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const dateValue = job.publication_date || job.applied_at || null;
+  const date = dateValue ? new Date(dateValue) : null;
+  const formattedDate =
+    date && !Number.isNaN(date.getTime())
+      ? date.toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+      : "Date unavailable";
 
   const status = tracked?.status;
   const currentStatus = status || "applied";
