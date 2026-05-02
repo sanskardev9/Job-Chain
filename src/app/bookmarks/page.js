@@ -168,6 +168,12 @@ export default function BookmarkedPage() {
     if (!jobUrl) return;
 
     setSavingJobKey(jobUrl);
+
+    const openedWindow = window.open(jobUrl, "_blank", "noopener,noreferrer");
+    if (!openedWindow) {
+      window.location.assign(jobUrl);
+    }
+
     setTrackedJobs((prev) => {
       const existing = prev[jobUrl];
       return {
@@ -187,7 +193,6 @@ export default function BookmarkedPage() {
       });
     }
 
-    window.open(jobUrl, "_blank", "noopener,noreferrer");
     setSavingJobKey("");
   }, [user]);
 
@@ -203,8 +208,7 @@ export default function BookmarkedPage() {
     return (
       <div className="min-h-[calc(100svh-9rem)] bg-zinc-950 text-white px-6 flex items-center justify-center">
         <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <h1 className="text-2xl font-bold">Sign in to sync bookmarks</h1>
-          <p className="mt-3 text-zinc-400">Your saved jobs persist across devices when logged in.</p>
+          <h1 className="text-2xl font-bold">Sign in to see your saved jobs!</h1>
           <Link
             href="/login?redirect=/bookmarks"
             className="inline-block mt-6 rounded-xl bg-white px-4 py-2 text-black font-semibold hover:bg-purple-600 hover:text-white transition"
@@ -228,7 +232,6 @@ export default function BookmarkedPage() {
       </div>
 
       <div className="max-w-5xl mx-auto py-4">
-
         {jobs.length === 0 ? (
           <div className="mt-8 rounded-2xl text-center border border-zinc-800 bg-zinc-900 p-8 text-zinc-300">
             No bookmarked jobs yet.
