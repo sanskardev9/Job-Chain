@@ -378,14 +378,22 @@ export default function JobPilotPage() {
                 label={`Send mode: ${profile?.send_mode === "review" ? "Review" : "Dry run"}`}
                 hint={profile?.send_mode === "review" ? `Max ${profile.max_sends_per_run} per run` : "Dry run never sends"}
                 href={profile?.send_mode === "review" ? null : "/profile"} />
-              <CheckRow ok={Boolean(setup?.workerOnline)}
-                label={setup?.workerOnline ? "JobPilot worker online" : "JobPilot worker offline"}
+              <CheckRow ok={Boolean(setup?.workerOnline) || Boolean(WORKER_URL && setup?.workerLastSeen)}
+                label={setup?.workerOnline
+                  ? "JobPilot worker online"
+                  : WORKER_URL && setup?.workerLastSeen ? "JobPilot worker asleep" : "JobPilot worker offline"}
                 hint={setup?.workerOnline
                   ? `Last seen ${time(setup.workerLastSeen)}`
-                  : setup?.workerLastSeen ? `Last seen ${dateTime(setup.workerLastSeen)}` : "Start it with: python -m jobpilot worker"} />
+                  : WORKER_URL && setup?.workerLastSeen
+                    ? "Wakes up automatically when you start a run (about a minute)"
+                    : setup?.workerLastSeen ? `Last seen ${dateTime(setup.workerLastSeen)}` : "Start it with: python -m jobpilot worker"} />
               <CheckRow ok={Boolean(setup?.workerSending)}
                 label={setup?.workerSending ? "Sending enabled on worker" : "Sending disabled on worker"}
-                hint={setup?.workerSending ? null : "Safety switch: set JOBPILOT_SENDING_ENABLED=true on the worker and restart it"} />
+                hint={setup?.workerSending
+                  ? null
+                  : setup?.workerOnline
+                    ? "Safety switch: set JOBPILOT_SENDING_ENABLED=true on the worker and restart it"
+                    : "Shown as off while the worker sleeps; checked again when it wakes"} />
             </ul>
           </section>
         </div>
