@@ -187,6 +187,26 @@ export default function Navbar() {
               ) : null}
             </Link>
           </li>
+          {user ? (
+            <li>
+              <Link
+                href="/jobpilot"
+                className="hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
+              >
+                JobPilot
+              </Link>
+            </li>
+          ) : null}
+          {user ? (
+            <li>
+              <Link
+                href="/profile"
+                className="hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
+              >
+                Profile
+              </Link>
+            </li>
+          ) : null}
           <li>
             {user ? (
               <div className="flex items-center gap-2 whitespace-nowrap">
@@ -307,6 +327,36 @@ export default function Navbar() {
                 ) : null}
               </Link>
             </li>
+            {user ? (
+              <li className="w-full">
+                <Link
+                  href="/jobpilot"
+                  onClick={() => setMobileOpen(false)}
+                  className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
+                    pathname === "/jobpilot"
+                      ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
+                      : "text-white"
+                  }`}
+                >
+                  JobPilot
+                </Link>
+              </li>
+            ) : null}
+            {user ? (
+              <li className="w-full">
+                <Link
+                  href="/profile"
+                  onClick={() => setMobileOpen(false)}
+                  className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
+                    pathname === "/profile"
+                      ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
+                      : "text-white"
+                  }`}
+                >
+                  Profile
+                </Link>
+              </li>
+            ) : null}
             <li className="pt-4 w-full">
               {user ? (
                 <div className="sidebar-nav-item mb-3 w-full rounded-lg border border-zinc-800 px-3 py-2 flex items-center justify-between">
