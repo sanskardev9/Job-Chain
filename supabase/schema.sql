@@ -515,3 +515,10 @@ $$;
 drop trigger if exists pipeline_runs_guard on public.pipeline_runs;
 create trigger pipeline_runs_guard before update on public.pipeline_runs
   for each row execute function public.guard_pipeline_run_update();
+
+-- Draft runs: write an application for one job picked in Found jobs (optional recipient typed by the user).
+alter table public.pipeline_runs
+  add column if not exists discovered_job_id uuid references public.discovered_jobs (id) on delete cascade,
+  add column if not exists recipient text;
+alter table public.pipeline_runs drop constraint if exists pipeline_runs_kind_check;
+alter table public.pipeline_runs add constraint pipeline_runs_kind_check check (kind in ('search', 'send', 'draft'));

@@ -137,14 +137,14 @@ export default function Navbar() {
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="sidebar-nav-item sm:hidden rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
+        className="sidebar-nav-item lg:hidden rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
         aria-label="Open menu"
       >
         <Menu size={20} />
       </button>
 
-      <nav className="hidden sm:block sm:w-auto">
-        <ul className="flex items-center justify-end gap-5 text-sm sm:text-lg font-semibold tracking-wide">
+      <nav className="hidden lg:block lg:w-auto">
+        <ul className="flex items-center justify-end gap-5 text-base xl:text-lg font-semibold tracking-wide whitespace-nowrap">
           <li>
             <Link
               href="/"
@@ -237,7 +237,7 @@ export default function Navbar() {
       </nav>
 
       <div
-        className={`sm:hidden fixed inset-0 z-50 transition-opacity duration-300 ${
+        className={`lg:hidden fixed inset-0 z-50 transition-opacity duration-300 ${
           mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
         }`}
       >
@@ -303,7 +303,7 @@ export default function Navbar() {
               >
                 Bookmarks
                 {bookmarkCount > 0 ? (
-                  <span className="absolute top-4 sm:top-2 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                  <span className="absolute top-4 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
                     {bookmarkCount}
                   </span>
                 ) : null}
@@ -321,7 +321,7 @@ export default function Navbar() {
               >
                 Applied
                 {appliedCount > 0 ? (
-                  <span className="absolute top-4 sm:top-2 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                  <span className="absolute top-4 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
                     {appliedCount}
                   </span>
                 ) : null}

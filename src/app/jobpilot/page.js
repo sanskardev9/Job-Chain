@@ -101,6 +101,8 @@ export default function JobPilotPage() {
   const [jobFilter, setJobFilter] = useState("all");
   const [appliedJobs, setAppliedJobs] = useState([]);
   const [markingId, setMarkingId] = useState("");
+  // Job id -> recipient typed for jobs whose posting lists no email.
+  const [recipientDrafts, setRecipientDrafts] = useState({});
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [draftsKey, setDraftsKey] = useState(0);
@@ -171,7 +173,7 @@ export default function JobPilotPage() {
     const [{ data }, { data: applied }] = await Promise.all([
       supabase
         .from("discovered_jobs")
-        .select("id, title, company, location, country, source, source_url, apply_url, match_label, score, blockers, unknowns, matched_skills, missing_skills, apply_email, evaluated_at")
+        .select("id, title, company, location, country, source, source_url, apply_url, match_label, score, blockers, unknowns, matched_skills, missing_skills, required_skills, nice_to_have_skills, apply_email, evaluated_at")
         .eq("user_id", currentUser.id)
         .eq("dismissed", false)
         .not("evaluated_at", "is", null)
@@ -216,6 +218,7 @@ export default function JobPilotPage() {
       if (!run || !ACTIVE.includes(run.status)) {
         await Promise.all([loadSetup(user), loadJobs(user)]);
         setDraftsKey((k) => k + 1);
+        if (run?.kind === "draft" && run.status === "finished") setTab("drafts");
       }
     }, POLL_MS);
     return () => clearInterval(timer);
@@ -240,19 +243,30 @@ export default function JobPilotPage() {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
   }, [events]);
 
-  const startRun = async (kind) => {
+  const startRun = async (kind, extra = {}) => {
     setBusy(true);
     setActionError("");
     wakeWorker();
-    const { error } = await supabase.from("pipeline_runs").insert({ user_id: user.id, kind });
+    const { error } = await supabase.from("pipeline_runs").insert({ user_id: user.id, kind, ...extra });
     if (error) {
-      setActionError(error.code === "23505" ? "A run is already in progress." : error.message);
+      setActionError(error.code === "23505" ? "A run is already in progress. Wait for it to finish." : error.message);
     } else {
       const run = await loadRuns(user);
       await loadEvents(run?.id);
       setTab("activity");
     }
     setBusy(false);
+    return !error;
+  };
+
+  // "Write application" on a found job: the worker drafts it, then it appears in Drafts.
+  const writeApplication = async (job) => {
+    const recipient = (recipientDrafts[job.id] || "").trim();
+    if (!job.apply_email && !/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(recipient)) {
+      setRecipientDrafts((prev) => ({ ...prev, [job.id]: prev[job.id] ?? "" }));
+      return;
+    }
+    await startRun("draft", { discovered_job_id: job.id, ...(recipient ? { recipient } : {}) });
   };
 
   const stopRun = async () => {
@@ -339,6 +353,13 @@ export default function JobPilotPage() {
     appliedByUrl.get(job.apply_url) ||
     (jobKey(job) && appliedByKey.get(jobKey(job))) ||
     null;
+  const sendBlockedReason = !setup?.gmail
+    ? "connect Gmail in Profile"
+    : profile?.send_mode !== "review"
+      ? "choose “Review” send mode in Profile"
+      : !setup?.workerSending && setup?.workerOnline
+        ? "sending is switched off on the worker"
+        : null;
   const jobCounts = ["strong", "possible", "unlikely"].reduce(
     (acc, label) => ({ ...acc, [label]: jobs.filter((j) => j.match_label === label && !appliedFor(j)).length }),
     { applied: jobs.filter((j) => appliedFor(j)).length }
@@ -351,7 +372,7 @@ export default function JobPilotPage() {
         : jobs.filter((j) => j.match_label === jobFilter && !appliedFor(j));
 
   return (
-    <div className="min-h-full bg-zinc-950 px-6 text-white pb-6">
+    <div className="min-h-full bg-zinc-950 px-4 sm:px-6 text-white pb-6">
       <div className="flex flex-col items-center justify-center w-content">
         <h1 className="text-3xl font-extrabold mb-3 sm:mb-6 mt-6 sm:mt-6 tracking-tight text-white sm:text-5xl hover:text-purple-500 hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] transition duration-300">
           JobPilot
@@ -363,7 +384,7 @@ export default function JobPilotPage() {
 
       <div className="max-w-5xl mx-auto py-4 space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <section className="lg:col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+          <section className="lg:col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">Automation</h2>
               {latestRun ? (
@@ -403,7 +424,7 @@ export default function JobPilotPage() {
                   type="button"
                   onClick={stopRun}
                   disabled={busy || latestRun.status === "cancelled"}
-                  className="rounded-xl border border-red-500/60 px-4 py-2.5 font-semibold text-red-300 hover:bg-red-500/10 transition disabled:opacity-50"
+                  className="whitespace-nowrap rounded-xl border border-red-500/60 px-4 py-2.5 font-semibold text-red-300 hover:bg-red-500/10 transition disabled:opacity-50"
                 >
                   Stop
                 </button>
@@ -413,7 +434,7 @@ export default function JobPilotPage() {
                     type="button"
                     onClick={() => startRun("search")}
                     disabled={busy || !profileReady}
-                    className="rounded-xl bg-white px-4 py-2.5 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50"
+                    className="whitespace-nowrap rounded-xl bg-white px-4 py-2.5 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50"
                   >
                     Find jobs now
                   </button>
@@ -422,7 +443,7 @@ export default function JobPilotPage() {
                     onClick={() => startRun("send")}
                     disabled={busy || !canSend}
                     title={sendHint}
-                    className="rounded-xl border border-zinc-700 px-4 py-2.5 font-semibold hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50"
+                    className="whitespace-nowrap rounded-xl border border-zinc-700 px-4 py-2.5 font-semibold hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50"
                   >
                     Send approved ({setup?.approved || 0})
                   </button>
@@ -433,7 +454,7 @@ export default function JobPilotPage() {
             {actionError ? <p className="mt-2 text-sm text-red-400">{actionError}</p> : null}
           </section>
 
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
             <h2 className="text-xl font-semibold">Setup</h2>
             <ul className="mt-4 space-y-3 text-sm">
               <CheckRow ok={profileReady} label="Profile filled in"
@@ -467,13 +488,13 @@ export default function JobPilotPage() {
           </section>
         </div>
 
-        <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
+        <div className="-mx-1 flex gap-2 overflow-x-auto border-b border-zinc-800 px-1 pb-3 sm:flex-wrap sm:overflow-visible">
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+              className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold transition ${
                 tab === t.id
                   ? "border-purple-500 text-purple-300 bg-purple-500/10"
                   : "border-zinc-700 text-zinc-300 hover:border-purple-500 hover:text-purple-300"
@@ -488,7 +509,7 @@ export default function JobPilotPage() {
 
         {tab === "activity" ? (
           <div className="space-y-6">
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold">Live log</h2>
                 {running ? <span className="text-xs text-blue-300 animate-pulse">updating…</span> : null}
@@ -517,7 +538,7 @@ export default function JobPilotPage() {
               </div>
             </section>
 
-            <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
               <h2 className="text-lg font-semibold">Recent runs</h2>
               {runs.length === 0 ? (
                 <p className="mt-3 text-sm text-zinc-500">No runs yet.</p>
@@ -543,13 +564,13 @@ export default function JobPilotPage() {
 
         {tab === "jobs" ? (
           <section>
-            <div className="flex flex-wrap gap-2">
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
               {["all", "strong", "possible", "unlikely", "applied"].map((f) => (
                 <button
                   key={f}
                   type="button"
                   onClick={() => setJobFilter(f)}
-                  className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${
+                  className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${
                     jobFilter === f
                       ? "border-purple-500 text-purple-300 bg-purple-500/10"
                       : "border-zinc-700 text-zinc-300 hover:border-purple-500 hover:text-purple-300"
@@ -572,7 +593,7 @@ export default function JobPilotPage() {
                     applied ? "border-emerald-500/30 bg-zinc-900/60" : "border-zinc-800 bg-zinc-900"
                   }`}>
                     <div className="flex items-start justify-between gap-3">
-                      <h3 className="font-semibold">{job.title}</h3>
+                      <h3 className="font-semibold break-words">{job.title}</h3>
                       <span className={`shrink-0 text-xs font-semibold capitalize ${LABEL_STYLES[job.match_label] || ""}`}>
                         {job.match_label} · {job.score}
                       </span>
@@ -595,25 +616,69 @@ export default function JobPilotPage() {
                     {(job.unknowns || []).length ? (
                       <p className="mt-1 text-xs text-yellow-300/90">? {job.unknowns.join(" · ")}</p>
                     ) : null}
+                    {(job.required_skills || []).length ? (
+                      <p className="mt-2 text-xs text-zinc-400">
+                        <span className="text-zinc-500">Required: </span>
+                        {job.required_skills.map((skill, i) => {
+                          const missing = (job.missing_skills || []).includes(skill);
+                          return (
+                            <span key={skill}>
+                              {i ? ", " : ""}
+                              <span className={missing ? "text-red-300/90" : "text-emerald-300/90"}>{skill}</span>
+                            </span>
+                          );
+                        })}
+                      </p>
+                    ) : null}
+                    {(job.nice_to_have_skills || []).length ? (
+                      <p className="mt-1 text-xs text-zinc-400">
+                        <span className="text-zinc-500">Nice to have: </span>{job.nice_to_have_skills.join(", ")}
+                      </p>
+                    ) : null}
                     {(job.matched_skills || []).length ? (
-                      <p className="mt-1 text-xs text-emerald-300/90">✓ {job.matched_skills.join(", ")}</p>
+                      <p className="mt-1 text-xs text-emerald-300/90">✓ You have: {job.matched_skills.join(", ")}</p>
                     ) : null}
                     <p className="mt-2 text-xs text-zinc-500">
                       {job.apply_email ? `Apply by email: ${job.apply_email}` : "No application email listed: apply on the vacancy page"}
                     </p>
-                    <div className="mt-auto pt-3 flex gap-2">
+                    {!applied && !job.apply_email && recipientDrafts[job.id] !== undefined ? (
+                      <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                        <label className="block text-xs text-zinc-400" htmlFor={`recipient-${job.id}`}>
+                          This posting lists no email. Paste the application email from the vacancy page:
+                        </label>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                          <input id={`recipient-${job.id}`} type="email" placeholder="jobs@company.com"
+                            value={recipientDrafts[job.id]}
+                            onChange={(e) => setRecipientDrafts((prev) => ({ ...prev, [job.id]: e.target.value }))}
+                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600" />
+                          <button type="button" onClick={() => writeApplication(job)}
+                            disabled={busy || running || !/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test((recipientDrafts[job.id] || "").trim())}
+                            className="whitespace-nowrap rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50">
+                            Write it
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="mt-auto pt-3 flex flex-wrap gap-2">
                       <a href={job.source_url} target="_blank" rel="noopener noreferrer"
-                        className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition">
+                        className="whitespace-nowrap rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition">
                         View vacancy
                       </a>
                       {!applied ? (
+                        <button type="button" onClick={() => writeApplication(job)} disabled={busy || running}
+                          title={running ? "Wait for the current run to finish" : "JobPilot writes a tailored email you can review"}
+                          className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50">
+                          Write application
+                        </button>
+                      ) : null}
+                      {!applied ? (
                         <button type="button" onClick={() => markApplied(job)} disabled={markingId === job.id}
-                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-emerald-500 hover:text-emerald-300 transition disabled:opacity-50">
+                          className="whitespace-nowrap rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-emerald-500 hover:text-emerald-300 transition disabled:opacity-50">
                           Mark as applied
                         </button>
                       ) : null}
                       <button type="button" onClick={() => dismissJob(job.id)}
-                        className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition">
+                        className="whitespace-nowrap rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition">
                         Dismiss
                       </button>
                     </div>
@@ -626,7 +691,9 @@ export default function JobPilotPage() {
         ) : null}
 
         {tab === "drafts" ? (
-          <DraftsPanel user={user} refreshKey={draftsKey} onChange={() => loadSetup(user)} />
+          <DraftsPanel user={user} refreshKey={draftsKey} onChange={() => loadSetup(user)}
+            onSend={() => startRun("send")}
+            sendBlocked={running ? "wait for the current run to finish" : sendBlockedReason} />
         ) : null}
       </div>
     </div>

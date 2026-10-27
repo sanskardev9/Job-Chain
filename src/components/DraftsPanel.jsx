@@ -25,7 +25,7 @@ const inputClass =
 const inFilter = (draft, filter) =>
   filter === "sent" ? ["sent", "sending"].includes(draft.status) : draft.status === filter;
 
-export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
+export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, sendBlocked }) {
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState([]);
   const [filter, setFilter] = useState("draft");
@@ -41,7 +41,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
         .from("application_drafts")
         .select(
           "id, recipient, recipient_evidence, subject, body, cv_filename, status, approved_at, sent_at, error, created_at, " +
-            "discovered_jobs(id, title, company, location, country, source, source_url, match_label, score, matched_skills, missing_skills, blockers, unknowns, deadline)"
+            "discovered_jobs(id, title, company, location, country, source, source_url, match_label, score, matched_skills, missing_skills, required_skills, nice_to_have_skills, blockers, unknowns, deadline)"
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -82,6 +82,14 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
       onChange?.();
     }
     setBusyId("");
+    return !error;
+  };
+
+  // Approves this draft and starts a send run right away (it sends all approved drafts, up to the cap).
+  const approveAndSend = async (draft) => {
+    const values = draft.status === "approved" ? null : { subject: draft.subject, body: draft.body, status: "approved" };
+    if (values && !(await updateDraft(draft, values))) return;
+    onSend?.();
   };
 
   const toggleSelected = (id) =>
@@ -139,13 +147,13 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2">
+      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
         {FILTERS.map((f) => (
           <button
             key={f}
             type="button"
             onClick={() => setFilter(f)}
-            className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${
+            className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${
               filter === f
                 ? "border-purple-500 text-purple-300 bg-purple-500/10"
                 : "border-zinc-700 text-zinc-300 hover:border-purple-500 hover:text-purple-300"
@@ -174,7 +182,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
               type="button"
               disabled={bulkBusy || !selectedVisible.length}
               onClick={() => bulkUpdate("approved")}
-              className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50"
+              className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap"
             >
               Approve selected ({selectedVisible.length})
             </button>
@@ -182,7 +190,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
               type="button"
               disabled={bulkBusy || !selectedVisible.length}
               onClick={() => bulkUpdate("rejected")}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50"
+              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50 whitespace-nowrap"
             >
               Reject selected
             </button>
@@ -204,7 +212,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
             const editable = ["draft", "approved", "rejected"].includes(draft.status);
             const busy = busyId === draft.id;
             return (
-              <div key={draft.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
+              <div key={draft.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6 shadow-lg">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   {selectable.includes(draft.id) ? (
                     <input
@@ -217,9 +225,9 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
                     />
                   ) : null}
                   <div className="min-w-0 flex-1">
-                    <h2 className="text-xl font-semibold">{job.title}</h2>
+                    <h2 className="text-lg sm:text-xl font-semibold break-words">{job.title}</h2>
                     <p className="text-zinc-300">
-                      {job.company} · {[job.location, job.country].filter(Boolean).join(", ")}
+                      {/^(siehe beschreibung|see description|confidential)$/i.test((job.company || "").trim()) ? "Employer not named" : job.company} · {[job.location, job.country].filter(Boolean).join(", ")}
                     </p>
                     <p className="mt-1 text-sm">
                       <span className={`font-semibold capitalize ${LABEL_STYLES[job.match_label] || ""}`}>
@@ -236,6 +244,20 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
 
                 {(job.unknowns || []).length ? (
                   <p className="mt-3 text-sm text-yellow-300/90">To check: {job.unknowns.join(" · ")}</p>
+                ) : null}
+                {(job.required_skills || []).length ? (
+                  <p className="mt-1 text-sm text-zinc-400">
+                    <span className="text-zinc-500">Required: </span>
+                    {job.required_skills.map((skill, i) => (
+                      <span key={skill}>
+                        {i ? ", " : ""}
+                        <span className={(job.missing_skills || []).includes(skill) ? "text-red-300/90" : "text-emerald-300/90"}>{skill}</span>
+                      </span>
+                    ))}
+                  </p>
+                ) : null}
+                {(job.nice_to_have_skills || []).length ? (
+                  <p className="mt-1 text-sm text-zinc-400"><span className="text-zinc-500">Nice to have: </span>{job.nice_to_have_skills.join(", ")}</p>
                 ) : null}
                 {(job.missing_skills || []).length ? (
                   <p className="mt-1 text-sm text-zinc-400">Skills you don&apos;t list: {job.missing_skills.join(", ")}</p>
@@ -263,13 +285,14 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
 
                 {draft.error ? <p className="mt-3 text-sm text-red-400">{draft.error}</p> : null}
                 {errors[draft.id] ? <p className="mt-3 text-sm text-red-400">{errors[draft.id]}</p> : null}
+                {editable && sendBlocked ? <p className="mt-3 text-xs text-zinc-500">To send: {sendBlocked}</p> : null}
 
                 <div className="mt-4 flex flex-wrap items-center gap-2">
                   <a
                     href={job.source_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-semibold hover:bg-purple-600 transition"
+                    className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-semibold hover:bg-purple-600 transition whitespace-nowrap"
                   >
                     View vacancy
                   </a>
@@ -278,9 +301,20 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
                       type="button"
                       disabled={busy}
                       onClick={() => updateDraft(draft, { subject: draft.subject, body: draft.body })}
-                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50"
+                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50 whitespace-nowrap"
                     >
                       Save changes
+                    </button>
+                  ) : null}
+                  {editable && onSend ? (
+                    <button
+                      type="button"
+                      disabled={busy || Boolean(sendBlocked)}
+                      title={sendBlocked || "Approve and send now"}
+                      onClick={() => approveAndSend(draft)}
+                      className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {draft.status === "approved" ? "Send now" : "Approve & send"}
                     </button>
                   ) : null}
                   {editable && draft.status !== "approved" ? (
@@ -288,9 +322,9 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
                       type="button"
                       disabled={busy}
                       onClick={() => updateDraft(draft, { subject: draft.subject, body: draft.body, status: "approved" })}
-                      className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50"
+                      className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap"
                     >
-                      Approve to send
+                      Approve
                     </button>
                   ) : null}
                   {draft.status === "approved" ? (
@@ -298,7 +332,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
                       type="button"
                       disabled={busy}
                       onClick={() => updateDraft(draft, { status: "draft" })}
-                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50"
+                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50 whitespace-nowrap"
                     >
                       Undo approval
                     </button>
@@ -308,7 +342,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
                       type="button"
                       disabled={busy}
                       onClick={() => updateDraft(draft, { status: "rejected" })}
-                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50"
+                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50 whitespace-nowrap"
                     >
                       Reject
                     </button>
