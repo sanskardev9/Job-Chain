@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 import DraftsPanel, { LABEL_STYLES } from "../../components/DraftsPanel";
+import { BookmarkToggle, MoreMenu } from "../../components/CardControls";
 
 const TABS = [
   { id: "activity", label: "Run & activity" },
@@ -100,6 +101,11 @@ export default function JobPilotPage() {
   const [jobs, setJobs] = useState([]);
   const [jobFilter, setJobFilter] = useState("all");
   const [appliedJobs, setAppliedJobs] = useState([]);
+  // Bookmarked found jobs (rows in `jobs` with is_saved), shown on the Bookmarks page.
+  const [savedRows, setSavedRows] = useState([]);
+  const [savingId, setSavingId] = useState("");
+  // Opened from Bookmarks: show this job first and highlighted.
+  const [focusJobId, setFocusJobId] = useState("");
   const [markingId, setMarkingId] = useState("");
   // Job id -> recipient typed for jobs whose posting lists no email.
   const [recipientDrafts, setRecipientDrafts] = useState({});
@@ -170,7 +176,7 @@ export default function JobPilotPage() {
   }, []);
 
   const loadJobs = useCallback(async (currentUser) => {
-    const [{ data }, { data: applied }] = await Promise.all([
+    const [{ data }, { data: tracked }] = await Promise.all([
       supabase
         .from("discovered_jobs")
         .select("id, title, company, location, country, source, source_url, apply_url, match_label, score, blockers, unknowns, matched_skills, missing_skills, required_skills, nice_to_have_skills, apply_email, evaluated_at")
@@ -181,18 +187,23 @@ export default function JobPilotPage() {
         .limit(300),
       supabase
         .from("jobs")
-        .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via")
+        .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via, is_saved")
         .eq("user_id", currentUser.id)
-        .not("applied_at", "is", null),
+        .or("applied_at.not.is.null,is_saved.eq.true"),
     ]);
     setJobs(data || []);
-    setAppliedJobs(applied || []);
+    setAppliedJobs((tracked || []).filter((row) => row.applied_at));
+    setSavedRows((tracked || []).filter((row) => row.is_saved && row.discovered_job_id));
   }, []);
 
   useEffect(() => {
     const init = async () => {
       const params = new URLSearchParams(window.location.search);
       if (TABS.some((t) => t.id === params.get("tab"))) setTab(params.get("tab"));
+      if (params.get("job")) {
+        setTab("jobs");
+        setFocusJobId(params.get("job"));
+      }
 
       const {
         data: { user: currentUser },
@@ -285,9 +296,11 @@ export default function JobPilotPage() {
   // For jobs applied to outside JobPilot: records it in Applied so it is never drafted or sent again.
   const markApplied = async (job) => {
     setMarkingId(job.id);
-    const { data, error } = await supabase
-      .from("jobs")
-      .insert({
+    const savedRow = savedRows.find((row) => row.discovered_job_id === job.id);
+    const appliedFields = { status: "applied", applied_at: new Date().toISOString(), applied_via: "manual", is_saved: false };
+    const query = savedRow
+      ? supabase.from("jobs").update(appliedFields).eq("id", savedRow.id)
+      : supabase.from("jobs").insert({
         user_id: user.id,
         title: job.title,
         company: job.company,
@@ -297,15 +310,44 @@ export default function JobPilotPage() {
         applied_at: new Date().toISOString(),
         applied_via: "manual",
         discovered_job_id: job.id,
-      })
-      .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via")
+      });
+    const { data, error } = await query
+      .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via, is_saved")
       .single();
     if (error) {
       console.error("Failed to mark as applied", error);
     } else {
       setAppliedJobs((prev) => [...prev, data]);
+      setSavedRows((prev) => prev.filter((row) => row.discovered_job_id !== job.id));
     }
     setMarkingId("");
+  };
+
+  const toggleSaved = async (job) => {
+    setSavingId(job.id);
+    const savedRow = savedRows.find((row) => row.discovered_job_id === job.id);
+    if (savedRow) {
+      const { error } = await supabase.from("jobs").delete().eq("id", savedRow.id).is("applied_at", null);
+      if (!error) setSavedRows((prev) => prev.filter((row) => row.id !== savedRow.id));
+    } else {
+      const { data, error } = await supabase
+        .from("jobs")
+        .insert({
+          user_id: user.id,
+          title: job.title,
+          company: job.company,
+          location: [job.location, job.country].filter(Boolean).join(", ") || null,
+          job_url: job.apply_url || job.source_url,
+          is_saved: true,
+          discovered_job_id: job.id,
+        })
+        .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via, is_saved")
+        .single();
+      if (error) console.error("Failed to save job", error);
+      else setSavedRows((prev) => [...prev, data]);
+    }
+    setSavingId("");
+    window.dispatchEvent(new CustomEvent("jobchain:bookmarks-updated", { detail: { delta: savedRow ? -1 : 1 } }));
   };
 
   if (loading) {
@@ -364,12 +406,14 @@ export default function JobPilotPage() {
     (acc, label) => ({ ...acc, [label]: jobs.filter((j) => j.match_label === label && !appliedFor(j)).length }),
     { applied: jobs.filter((j) => appliedFor(j)).length }
   );
-  const visibleJobs =
+  const filteredJobs =
     jobFilter === "all"
       ? jobs
       : jobFilter === "applied"
         ? jobs.filter((j) => appliedFor(j))
         : jobs.filter((j) => j.match_label === jobFilter && !appliedFor(j));
+  const focusedJob = focusJobId ? jobs.find((j) => j.id === focusJobId) : null;
+  const visibleJobs = focusedJob ? [focusedJob, ...filteredJobs.filter((j) => j.id !== focusJobId)] : filteredJobs;
 
   return (
     <div className="min-h-full bg-zinc-950 px-4 sm:px-6 text-white pb-6">
@@ -588,11 +632,16 @@ export default function JobPilotPage() {
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
                 {visibleJobs.map((job) => {
                   const applied = appliedFor(job);
+                  const saved = savedRows.some((row) => row.discovered_job_id === job.id);
                   return (
-                  <div key={job.id} className={`flex flex-col rounded-2xl border p-5 ${
-                    applied ? "border-emerald-500/30 bg-zinc-900/60" : "border-zinc-800 bg-zinc-900"
+                  <div key={job.id} className={`relative flex flex-col rounded-2xl border p-5 ${
+                    job.id === focusJobId ? "border-purple-500 ring-1 ring-purple-500/60 bg-zinc-900"
+                      : applied ? "border-emerald-500/30 bg-zinc-900/60" : "border-zinc-800 bg-zinc-900"
                   }`}>
-                    <div className="flex items-start justify-between gap-3">
+                    {!applied ? (
+                      <BookmarkToggle saved={saved} disabled={savingId === job.id} onToggle={() => toggleSaved(job)} />
+                    ) : null}
+                    <div className="flex items-start justify-between gap-3 pr-10">
                       <h3 className="font-semibold break-words">{job.title}</h3>
                       <span className={`shrink-0 text-xs font-semibold capitalize ${LABEL_STYLES[job.match_label] || ""}`}>
                         {job.match_label} · {job.score}
@@ -659,11 +708,7 @@ export default function JobPilotPage() {
                         </div>
                       </div>
                     ) : null}
-                    <div className="mt-auto pt-3 flex flex-wrap gap-2">
-                      <a href={job.source_url} target="_blank" rel="noopener noreferrer"
-                        className="whitespace-nowrap rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition">
-                        View vacancy
-                      </a>
+                    <div className="mt-auto pt-3 flex items-center gap-2">
                       {!applied ? (
                         <button type="button" onClick={() => writeApplication(job)} disabled={busy || running}
                           title={running ? "Wait for the current run to finish" : "JobPilot writes a tailored email you can review"}
@@ -671,16 +716,14 @@ export default function JobPilotPage() {
                           Write application
                         </button>
                       ) : null}
-                      {!applied ? (
-                        <button type="button" onClick={() => markApplied(job)} disabled={markingId === job.id}
-                          className="whitespace-nowrap rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-emerald-500 hover:text-emerald-300 transition disabled:opacity-50">
-                          Mark as applied
-                        </button>
-                      ) : null}
-                      <button type="button" onClick={() => dismissJob(job.id)}
-                        className="whitespace-nowrap rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition">
-                        Dismiss
-                      </button>
+                      <a href={job.source_url} target="_blank" rel="noopener noreferrer"
+                        className="whitespace-nowrap rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition">
+                        View vacancy
+                      </a>
+                      <MoreMenu disabled={markingId === job.id} items={[
+                        ...(!applied ? [{ label: "Mark as applied", tone: "success", onClick: () => markApplied(job) }] : []),
+                        { label: "Dismiss", tone: "danger", onClick: () => dismissJob(job.id) },
+                      ]} />
                     </div>
                   </div>
                   );

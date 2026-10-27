@@ -270,17 +270,6 @@ export default function AppliedPage() {
                       >
                         View Job
                       </a>
-                      <div className="mt-10 text-right text-zinc-500 text-[11px] sm:text-sm">
-                        Sourced from{" "}
-                        <a
-                          href="https://remotive.com"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="hover:text-purple-400 hover:underline font-extrabold hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] transition duration-300"
-                        >
-                          Remotive
-                        </a>
-                      </div>
                     </div>
                   </div>
                 </div>

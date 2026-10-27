@@ -1,200 +1,73 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
-import JobCard from "../../components/JobCard";
+import { LABEL_STYLES } from "../../components/DraftsPanel";
+import { BookmarkToggle, MoreMenu } from "../../components/CardControls";
 
-const SAVED_JOBS_KEY = "jobchain_saved_jobs";
-const TRACKED_JOBS_KEY = "jobchain_tracked_jobs";
 const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
+const HIDDEN_EMPLOYER = /^(siehe beschreibung|see description|confidential|vertraulich|anonym(ous)?)$/i;
 
-function buildTrackedPayload(job, status, existing) {
-  return {
-    job_id: job.id,
-    title: job.title,
-    company: job.company_name,
-    location: job.candidate_required_location,
-    apply_url: job.url,
-    status,
-    applied_at: existing?.applied_at || new Date().toISOString(),
-  };
-}
-
-async function upsertTrackedJob(userId, job, status) {
-  const jobUrl = job?.url || job?.job_url;
-  if (!userId || !jobUrl) {
-    throw new Error("Missing user id or job url while tracking applied job");
-  }
-
-  const { data: existingRows, error: fetchError } = await supabase
-    .from("jobs")
-    .select("id, applied_at")
-    .eq("user_id", userId)
-    .eq("job_url", jobUrl)
-    .order("created_at", { ascending: false });
-
-  if (fetchError) throw fetchError;
-
-  const existingRow = Array.isArray(existingRows) ? existingRows[0] : null;
-  const payload = {
-    user_id: userId,
-    title: job.title,
-    company: job.company_name,
-    location: job.candidate_required_location,
-    job_url: jobUrl,
-    status,
-    applied_at: existingRow?.applied_at || new Date().toISOString(),
-  };
-
-  if (existingRow?.id) {
-    const { error } = await supabase.from("jobs").update(payload).eq("id", existingRow.id);
-    if (error) throw error;
-    return;
-  }
-
-  const { error } = await supabase.from("jobs").insert(payload);
-  if (error) throw error;
-}
-
-export default function BookmarkedPage() {
-  const [jobs, setJobs] = useState([]);
-  const [trackedJobs, setTrackedJobs] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [savingJobKey, setSavingJobKey] = useState("");
+// Shortlist of JobPilot found jobs you saved to apply to later. Applying moves them to Applied.
+export default function BookmarksPage() {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState([]);
+  const [busyId, setBusyId] = useState("");
 
   useEffect(() => {
-    const loadBookmarks = async () => {
+    const load = async () => {
       const {
         data: { user: currentUser },
       } = await supabase.auth.getUser();
-
       setUser(currentUser ?? null);
-
-      if (currentUser) {
-        const { data, error } = await supabase
-          .from("jobs")
-          .select("id, title, company, location, job_url, status, applied_at")
-          .eq("user_id", currentUser.id)
-          .eq("is_saved", true)
-          .order("updated_at", { ascending: false });
-
-        if (!error) {
-          const trackedMap = {};
-          setJobs(
-            (data || []).map((row) => ({
-              id: row.id,
-              title: row.title,
-              company_name: row.company,
-              candidate_required_location: row.location,
-              url: row.job_url,
-              publication_date: row.applied_at || new Date().toISOString(),
-            }))
-          );
-          (data || []).forEach((row) => {
-            trackedMap[row.job_url] = {
-              status: row.status || "applied",
-              applied_at: row.applied_at,
-            };
-          });
-          setTrackedJobs(trackedMap);
-          setLoading(false);
-          return;
-        }
-      }
-
-      try {
-        const raw = localStorage.getItem(SAVED_JOBS_KEY);
-        const saved = raw ? JSON.parse(raw) : {};
-        setJobs(Object.values(saved || {}));
-        const trackedRaw = localStorage.getItem(TRACKED_JOBS_KEY);
-        setTrackedJobs(trackedRaw ? JSON.parse(trackedRaw) : {});
-      } catch (error) {
-        console.error("Failed to load bookmarked jobs", error);
-        setJobs([]);
-        setTrackedJobs({});
-      } finally {
+      if (!currentUser) {
         setLoading(false);
+        return;
       }
+      const { data, error } = await supabase
+        .from("jobs")
+        .select(
+          "id, title, company, location, job_url, created_at, discovered_job_id, " +
+            "discovered_jobs(id, source, source_url, match_label, score, apply_email, required_skills, missing_skills, unknowns)"
+        )
+        .eq("user_id", currentUser.id)
+        .eq("is_saved", true)
+        .is("applied_at", null)
+        .order("created_at", { ascending: false });
+      if (error) console.error("Failed to load bookmarks", error);
+      setRows(data || []);
+      setLoading(false);
     };
-
-    loadBookmarks();
+    load();
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem(SAVED_JOBS_KEY, JSON.stringify(
-      jobs.reduce((acc, job) => {
-        acc[job.url] = job;
-        return acc;
-      }, {})
-    ));
-  }, [jobs]);
+  const removeRow = (id) => {
+    setRows((prev) => prev.filter((row) => row.id !== id));
+    window.dispatchEvent(new CustomEvent(BOOKMARKS_UPDATED_EVENT, { detail: { delta: -1 } }));
+  };
 
-  useEffect(() => {
-    localStorage.setItem(TRACKED_JOBS_KEY, JSON.stringify(trackedJobs));
-  }, [trackedJobs]);
+  const unsave = async (row) => {
+    setBusyId(row.id);
+    const { error } = await supabase.from("jobs").delete().eq("id", row.id).eq("user_id", user.id);
+    if (error) console.error("Failed to remove bookmark", error);
+    else removeRow(row.id);
+    setBusyId("");
+  };
 
-  const handleToggleSave = useCallback(async (job) => {
-    if (!user) return;
-    setSavingJobKey(job.url);
-
+  const markApplied = async (row) => {
+    setBusyId(row.id);
     const { error } = await supabase
       .from("jobs")
-      .update({ is_saved: false })
-      .eq("user_id", user.id)
-      .eq("job_url", job.url);
-
-    if (error) {
-      console.error("Failed to unsave job", error);
-      setSavingJobKey("");
-      return;
-    }
-
-    setJobs((prev) => prev.filter((item) => item.url !== job.url));
-    window.dispatchEvent(
-      new CustomEvent(BOOKMARKS_UPDATED_EVENT, {
-        detail: { delta: -1 },
-      })
-    );
-    setSavingJobKey("");
-  }, [user]);
-
-  const handleApply = useCallback(async (job) => {
-    if (!user) return;
-
-    const jobUrl = job?.url || job?.job_url;
-    if (!jobUrl) return;
-
-    setSavingJobKey(jobUrl);
-
-    const openedWindow = window.open(jobUrl, "_blank", "noopener,noreferrer");
-    if (!openedWindow) {
-      window.location.assign(jobUrl);
-    }
-
-    setTrackedJobs((prev) => {
-      const existing = prev[jobUrl];
-      return {
-        ...prev,
-        [jobUrl]: buildTrackedPayload({ ...job, url: jobUrl }, "applied", existing),
-      };
-    });
-
-    try {
-      await upsertTrackedJob(user.id, job, "applied");
-    } catch (error) {
-      console.error("Failed to persist applied job from bookmarks", {
-        message: error?.message,
-        details: error?.details,
-        hint: error?.hint,
-        code: error?.code,
-      });
-    }
-
-    setSavingJobKey("");
-  }, [user]);
+      .update({ status: "applied", applied_at: new Date().toISOString(), applied_via: "manual", is_saved: false })
+      .eq("id", row.id)
+      .eq("user_id", user.id);
+    if (error) console.error("Failed to mark as applied", error);
+    else removeRow(row.id);
+    setBusyId("");
+  };
 
   if (loading) {
     return (
@@ -208,7 +81,7 @@ export default function BookmarkedPage() {
     return (
       <div className="min-h-[calc(100svh-9rem)] bg-zinc-950 text-white px-6 flex items-center justify-center">
         <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <h1 className="text-2xl font-bold">Sign in to see your saved jobs!</h1>
+          <h1 className="text-2xl font-bold">Sign in to see your bookmarks!</h1>
           <Link
             href="/login?redirect=/bookmarks"
             className="inline-block mt-6 rounded-xl bg-white px-4 py-2 text-black font-semibold hover:bg-purple-600 hover:text-white transition"
@@ -221,35 +94,91 @@ export default function BookmarkedPage() {
   }
 
   return (
-    <div className="min-h-full bg-zinc-950 px-6 text-white pb-6">
-      <div className="flex flex-col items-center justify-center w-content">
-        <h1 className="text-3xl font-extrabold mb-3 sm:mb-6 mt-6 sm:mt-6 tracking-tight text-white sm:text-5xl hover:text-purple-500 hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] transition duration-300">
-          Bookmarked Jobs
+    <div className="min-h-full bg-zinc-950 px-4 sm:px-6 text-white pb-6">
+      <div className="flex flex-col items-center justify-center">
+        <h1 className="text-3xl font-extrabold mb-3 sm:mb-6 mt-6 tracking-tight text-white sm:text-5xl hover:text-purple-500 hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] transition duration-300">
+          Bookmarks
         </h1>
-        <p className="text-zinc-400 mb-3 text-sm sm:text-base">
-          All jobs you saved with the bookmark icon.
+        <p className="text-zinc-400 mb-3 text-sm sm:text-base text-center">
+          Jobs you saved in JobPilot to apply to later. Once you apply, they move to Applied.
         </p>
       </div>
 
       <div className="max-w-5xl mx-auto py-4">
-        {jobs.length === 0 ? (
-          <div className="mt-8 rounded-2xl text-center border border-zinc-800 bg-zinc-900 p-8 text-zinc-300">
-            No bookmarked jobs yet.
+        {rows.length === 0 ? (
+          <div className="mt-6 rounded-2xl text-center border border-zinc-800 bg-zinc-900 p-8 text-zinc-300">
+            <p className="text-lg font-semibold text-white">No saved jobs</p>
+            <p className="mt-2 text-zinc-400">
+              Tap the bookmark icon on any job in JobPilot → Found jobs.
+            </p>
+            <Link
+              href="/jobpilot?tab=jobs"
+              className="inline-block mt-5 whitespace-nowrap rounded-xl bg-white px-4 py-2 text-black font-semibold hover:bg-purple-600 hover:text-white transition"
+            >
+              Open found jobs
+            </Link>
           </div>
         ) : (
-          <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-            {jobs.map((job) => (
-              <JobCard
-                key={job.url}
-                job={job}
-                tracked={trackedJobs[job.url]}
-                isSaved
-                isSaving={savingJobKey === job.url}
-                isLast={false}
-                onToggleSave={handleToggleSave}
-                onApply={handleApply}
-              />
-            ))}
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {rows.map((row) => {
+              const job = row.discovered_jobs || {};
+              const company = HIDDEN_EMPLOYER.test((row.company || "").trim()) ? "Employer not named" : row.company;
+              const busy = busyId === row.id;
+              return (
+                <div key={row.id} className="relative flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+                  <BookmarkToggle saved disabled={busy} onToggle={() => unsave(row)} />
+                  <div className="flex items-start justify-between gap-3 pr-10">
+                    <h2 className="font-semibold break-words">{row.title}</h2>
+                    {job.match_label ? (
+                      <span className={`shrink-0 text-xs font-semibold capitalize ${LABEL_STYLES[job.match_label] || ""}`}>
+                        {job.match_label} · {job.score}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="text-sm text-zinc-300">{company}</p>
+                  <p className="text-xs text-zinc-500">
+                    {[row.location, job.source].filter(Boolean).join(" · ")}
+                  </p>
+                  {(job.required_skills || []).length ? (
+                    <p className="mt-2 text-xs text-zinc-400">
+                      <span className="text-zinc-500">Required: </span>
+                      {job.required_skills.map((skill, i) => (
+                        <span key={skill}>
+                          {i ? ", " : ""}
+                          <span className={(job.missing_skills || []).includes(skill) ? "text-red-300/90" : "text-emerald-300/90"}>
+                            {skill}
+                          </span>
+                        </span>
+                      ))}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-xs text-zinc-500">
+                    {job.apply_email ? `Apply by email: ${job.apply_email}` : "No application email listed: apply on the vacancy page"}
+                  </p>
+                  <div className="mt-auto pt-3 flex items-center gap-2">
+                    {row.discovered_job_id ? (
+                      <Link
+                        href={`/jobpilot?job=${row.discovered_job_id}`}
+                        className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition"
+                      >
+                        Write application
+                      </Link>
+                    ) : null}
+                    <a
+                      href={job.source_url || row.job_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="whitespace-nowrap rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition"
+                    >
+                      View vacancy
+                    </a>
+                    <MoreMenu disabled={busy} items={[
+                      { label: "Mark as applied", tone: "success", onClick: () => markApplied(row) },
+                    ]} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

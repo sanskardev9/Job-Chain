@@ -3,10 +3,10 @@ import Link from "next/link";
 
 const FEATURES = [
   {
-    title: "Browse remote jobs",
-    text: "Search fresh remote openings, bookmark the ones you like, and open the listing in one click.",
-    href: "/jobs",
-    cta: "Browse jobs",
+    title: "Shortlist jobs",
+    text: "Save the jobs you like from JobPilot's matches and come back to apply when you're ready.",
+    href: "/bookmarks",
+    cta: "View bookmarks",
   },
   {
     title: "Track every application",
@@ -43,21 +43,21 @@ export default function Home() {
           Find jobs, track applications, and apply faster.
         </p>
         <p className="mt-3 text-zinc-400 sm:text-lg">
-          Browse remote openings, keep every application organised, and let JobPilot match you to jobs
-          and draft applications you approve.
+          JobPilot finds jobs that match your profile, drafts tailored applications, and sends only what you
+          approve. Save jobs for later and keep every application organised.
         </p>
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            href="/jobs"
+            href="/jobpilot"
             className="w-full sm:w-auto rounded-xl bg-white px-6 py-3 font-semibold text-black shadow-md transition duration-200 hover:scale-105 hover:bg-purple-600 hover:text-white"
           >
             Let the hunt begin
           </Link>
           <Link
-            href="/jobpilot"
+            href="/applied"
             className="w-full sm:w-auto rounded-xl border border-zinc-700 px-6 py-3 font-semibold transition duration-200 hover:border-purple-500 hover:text-purple-300"
           >
-            Try JobPilot
+            Track applications
           </Link>
         </div>
       </section>

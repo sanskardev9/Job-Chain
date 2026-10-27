@@ -20,7 +20,7 @@ function LoginPageContent() {
   const formRef = useRef(null);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/jobs";
+  const redirectTo = searchParams.get("redirect") || "/jobpilot";
 
   useEffect(() => {
     const checkSession = async () => {
