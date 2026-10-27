@@ -3,21 +3,35 @@
 import { useEffect, useRef, useState } from "react";
 import { Bookmark, MoreHorizontal } from "lucide-react";
 
-// Corner bookmark toggle, same look as the old job cards.
+// Corner bookmark toggle, same look and click animation as the original job cards.
 export function BookmarkToggle({ saved, disabled, onToggle }) {
+  const [pulse, setPulse] = useState(false);
+
+  useEffect(() => {
+    if (!pulse) return undefined;
+    const timer = setTimeout(() => setPulse(false), 260);
+    return () => clearTimeout(timer);
+  }, [pulse]);
+
   return (
     <button
       type="button"
-      onClick={onToggle}
       disabled={disabled}
+      onClick={() => {
+        setPulse(true);
+        onToggle();
+      }}
       aria-pressed={saved}
-      aria-label={saved ? "Remove bookmark" : "Bookmark this job"}
+      aria-label={saved ? "Remove bookmark" : "Bookmark job"}
       title={saved ? "Remove bookmark" : "Bookmark to apply later"}
-      className={`absolute top-0 right-4 transition disabled:opacity-50 cursor-pointer ${
-        saved ? "text-purple-400" : "text-zinc-500 hover:text-purple-300"
-      }`}
+      className={`absolute top-0 right-0 transition disabled:opacity-50 cursor-pointer ${
+        saved ? "text-purple-500" : "text-zinc-400 hover:text-purple-400"
+      } ${pulse ? "scale-125 -rotate-6" : "scale-100 rotate-0"}`}
     >
-      <Bookmark size={30} strokeWidth={1.75} fill={saved ? "currentColor" : "none"} />
+      <Bookmark
+        size={30}
+        className={`transition-all duration-200 ${saved ? "fill-current drop-shadow-[0_0_10px_rgba(168,85,247,0.7)]" : ""}`}
+      />
     </button>
   );
 }

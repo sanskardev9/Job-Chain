@@ -125,7 +125,7 @@ export default function BookmarksPage() {
               const company = HIDDEN_EMPLOYER.test((row.company || "").trim()) ? "Employer not named" : row.company;
               const busy = busyId === row.id;
               return (
-                <div key={row.id} className="relative flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+                <div key={row.id} className="relative flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-lg hover:shadow-purple-800/40 transition-shadow duration-300">
                   <BookmarkToggle saved disabled={busy} onToggle={() => unsave(row)} />
                   <div className="flex items-start justify-between gap-3 pr-10">
                     <h2 className="font-semibold break-words">{row.title}</h2>

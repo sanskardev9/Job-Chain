@@ -637,7 +637,7 @@ export default function JobPilotPage() {
                   <div key={job.id} className={`relative flex flex-col rounded-2xl border p-5 ${
                     job.id === focusJobId ? "border-purple-500 ring-1 ring-purple-500/60 bg-zinc-900"
                       : applied ? "border-emerald-500/30 bg-zinc-900/60" : "border-zinc-800 bg-zinc-900"
-                  }`}>
+                  } shadow-lg hover:shadow-purple-800/40 transition-shadow duration-300`}>
                     {!applied ? (
                       <BookmarkToggle saved={saved} disabled={savingId === job.id} onToggle={() => toggleSaved(job)} />
                     ) : null}
