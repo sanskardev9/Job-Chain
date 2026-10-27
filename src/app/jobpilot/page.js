@@ -40,8 +40,15 @@ const EVENT_STYLES = {
   step: "text-blue-300 font-semibold",
 };
 
+// Job boards' "employer hidden" placeholders: never use them to match or display as a company.
+const HIDDEN_EMPLOYER = /^(siehe beschreibung|see description|confidential|vertraulich|anonym(ous)?|nicht eingegeben|keine angabe|n\/a|-|unknown)$/i;
+const isHiddenEmployer = (company) => !company || HIDDEN_EMPLOYER.test(company.trim());
+const companyName = (company) => (isHiddenEmployer(company) ? "Employer not named" : company);
+
 // Same job reposted (other source/URL): compare company + title without gender tags or legal suffixes.
+// Null when the employer is hidden, since unrelated jobs then share the same "company".
 const jobKey = (job) => {
+  if (isHiddenEmployer(job.company)) return null;
   const clean = (text) =>
     (text || "")
       .toLowerCase()
@@ -325,12 +332,12 @@ export default function JobPilotPage() {
         : `Sends up to ${profile.max_sends_per_run} approved email(s)`;
   const appliedById = new Map(appliedJobs.filter((a) => a.discovered_job_id).map((a) => [a.discovered_job_id, a]));
   const appliedByUrl = new Map(appliedJobs.filter((a) => a.job_url).map((a) => [a.job_url, a]));
-  const appliedByKey = new Map(appliedJobs.map((a) => [jobKey(a), a]));
+  const appliedByKey = new Map(appliedJobs.map((a) => [jobKey(a), a]).filter(([key]) => key));
   const appliedFor = (job) =>
     appliedById.get(job.id) ||
     appliedByUrl.get(job.source_url) ||
     appliedByUrl.get(job.apply_url) ||
-    appliedByKey.get(jobKey(job)) ||
+    (jobKey(job) && appliedByKey.get(jobKey(job))) ||
     null;
   const jobCounts = ["strong", "possible", "unlikely"].reduce(
     (acc, label) => ({ ...acc, [label]: jobs.filter((j) => j.match_label === label && !appliedFor(j)).length }),
@@ -576,7 +583,9 @@ export default function JobPilotPage() {
                         {applied.applied_via === "email" ? " via JobPilot" : ""}
                       </p>
                     ) : null}
-                    <p className="text-sm text-zinc-300">{job.company}</p>
+                    <p className={`text-sm ${isHiddenEmployer(job.company) ? "italic text-zinc-500" : "text-zinc-300"}`}>
+                      {companyName(job.company)}
+                    </p>
                     <p className="text-xs text-zinc-500">
                       {[job.location, job.country].filter(Boolean).join(", ")} · {job.source}
                     </p>
