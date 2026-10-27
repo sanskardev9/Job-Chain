@@ -34,6 +34,31 @@ const EMPTY_FORM = {
 const CV_BUCKET = "cvs";
 const CV_MAX_BYTES = 5 * 1024 * 1024;
 
+// Unsaved form edits are kept in this browser so nothing is lost on reloads or the Google redirect.
+const draftKey = (userId) => `jobchain:profile-draft:${userId}`;
+const readDraft = (userId) => {
+  try {
+    const raw = localStorage.getItem(draftKey(userId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+const writeDraft = (userId, form) => {
+  try {
+    localStorage.setItem(draftKey(userId), JSON.stringify({ form, savedAt: Date.now() }));
+  } catch {
+    // Storage unavailable (private mode / full): the form still works, it just isn't kept.
+  }
+};
+const clearDraft = (userId) => {
+  try {
+    localStorage.removeItem(draftKey(userId));
+  } catch {
+    // ignore
+  }
+};
+
 const toNumberOrNull = (value) => {
   if (value === "" || value === null || value === undefined) return null;
   const number = Number(value);
@@ -64,6 +89,8 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  // True when the form has edits not yet saved to the database.
+  const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [cv, setCv] = useState(null);
@@ -113,7 +140,12 @@ export default function ProfilePage() {
         setCv({ path: data.cv_storage_path, filename: data.cv_filename || "cv.pdf" });
       }
 
-      if (data) {
+      const draft = readDraft(currentUser.id);
+      if (draft?.form) {
+        setForm({ ...EMPTY_FORM, ...draft.form });
+        setDirty(true);
+        setMessage("Restored your unsaved changes. Click “Save profile” to keep them.");
+      } else if (data) {
         setForm({
           ...EMPTY_FORM,
           ...Object.fromEntries(
@@ -145,15 +177,24 @@ export default function ProfilePage() {
     loadProfile();
   }, []);
 
-  const setField = (name, value) => setForm((prev) => ({ ...prev, [name]: value }));
+  useEffect(() => {
+    if (user && dirty) writeDraft(user.id, form);
+  }, [user, dirty, form]);
 
-  const setLanguage = (index, key, value) =>
+  const setField = (name, value) => {
+    setDirty(true);
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const setLanguage = (index, key, value) => {
+    setDirty(true);
     setForm((prev) => ({
       ...prev,
       languages: prev.languages.map((item, i) =>
         i === index ? { ...item, [key]: value } : item
       ),
     }));
+  };
 
   const uploadCv = async (e) => {
     const file = e.target.files?.[0];
@@ -234,6 +275,14 @@ export default function ProfilePage() {
   const connectGmail = async () => {
     setGmailBusy(true);
     setGmailError("");
+    if (dirty) {
+      const error = await persistProfile();
+      if (error) {
+        setGmailError(`Save your profile first: ${error}`);
+        setGmailBusy(false);
+        return;
+      }
+    }
     try {
       await startGmailConnect();
     } catch (err) {
@@ -261,6 +310,17 @@ export default function ProfilePage() {
     setSaving(true);
     setMessage("");
     setErrorMessage("");
+    const error = await persistProfile();
+    if (error) {
+      setErrorMessage(error);
+    } else {
+      setMessage("Profile saved. JobPilot will use it on its next run.");
+    }
+    setSaving(false);
+  };
+
+  // Writes the form to the database. Returns an error message, or null on success.
+  const persistProfile = async () => {
 
     const years = toNumberOrNull(form.experience_years_part);
     const months = toNumberOrNull(form.experience_months_part);
@@ -296,11 +356,11 @@ export default function ProfilePage() {
 
     if (error) {
       console.error("Failed to save profile", error);
-      setErrorMessage(error.message);
-    } else {
-      setMessage("Profile saved. JobPilot will use it on its next run.");
+      return error.message;
     }
-    setSaving(false);
+    clearDraft(user.id);
+    setDirty(false);
+    return null;
   };
 
   if (loading) {
