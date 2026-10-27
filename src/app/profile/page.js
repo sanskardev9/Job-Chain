@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import { startGmailConnect } from "../../lib/gmailClient";
 import Loader from "../../components/Loader";
+import PdfModal from "../../components/PdfModal";
 
 const LANGUAGE_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2", "Native"];
 const SEND_MODES = [
@@ -97,6 +98,7 @@ export default function ProfilePage() {
   const [cvBusy, setCvBusy] = useState(false);
   const [cvError, setCvError] = useState("");
   const [cvOpening, setCvOpening] = useState(false);
+  const [cvPreviewUrl, setCvPreviewUrl] = useState("");
   const [confirmRemoveCv, setConfirmRemoveCv] = useState(false);
   const [gmail, setGmail] = useState(null);
   const [gmailBusy, setGmailBusy] = useState(false);
@@ -242,31 +244,19 @@ export default function ProfilePage() {
     setCvBusy(false);
   };
 
-  // Mobile browsers block tabs opened after an await, so open the tab during the tap and point
-  // it at the CV once the temporary link is ready.
+  // Shows the CV in a modal on this page, using a short-lived private link.
   const viewCv = async () => {
     setCvError("");
     setCvOpening(true);
-    const tab = window.open("", "_blank");
-    if (tab) {
-      tab.document.title = "Opening CV…";
-      tab.document.body.style.cssText = "margin:0;display:grid;place-items:center;height:100vh;background:#09090b;color:#a1a1aa;font-family:system-ui,sans-serif";
-      tab.document.body.textContent = "Opening your CV…";
-    }
-    const { data, error } = await supabase.storage.from(CV_BUCKET).createSignedUrl(cv.path, 60);
+    const { data, error } = await supabase.storage.from(CV_BUCKET).createSignedUrl(cv.path, 300);
     setCvOpening(false);
     if (error) {
-      tab?.close();
       setCvError(error.message);
       return;
     }
-    if (tab) {
-      tab.location.href = data.signedUrl;
-    } else {
-      // Popup blocked anyway: open it in this tab instead.
-      window.location.href = data.signedUrl;
-    }
+    setCvPreviewUrl(data.signedUrl);
   };
+
 
   const removeCv = async () => {
     setCvBusy(true);
@@ -622,6 +612,10 @@ export default function ProfilePage() {
           {saving ? "Saving..." : "Save profile"}
         </button>
       </form>
+
+      {cvPreviewUrl ? (
+        <PdfModal url={cvPreviewUrl} title={cv?.filename || "CV"} onClose={() => setCvPreviewUrl("")} />
+      ) : null}
 
       {confirmRemoveCv ? (
         <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center px-4">
