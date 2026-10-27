@@ -60,7 +60,7 @@ export default function BookmarksPage() {
         }
       }
     }, 3000);
-    const keepAwake = setInterval(wakeWorker, 4 * 60 * 1000);
+    const keepAwake = setInterval(wakeWorker, active.some(([, w]) => w.status === "queued") ? 20000 : 4 * 60 * 1000);
     return () => {
       clearInterval(timer);
       clearInterval(keepAwake);

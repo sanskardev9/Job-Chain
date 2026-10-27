@@ -2,11 +2,11 @@ import { supabase } from "./supabaseClient";
 
 export const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 
-// Hosted worker (e.g. Render free web service) sleeps when idle; pinging /health wakes it.
+// Hosted worker (e.g. Render free web service) sleeps when idle. The app's own API pings it,
+// so browser shields cannot block the wake-up.
 export function wakeWorker() {
-  const url = process.env.NEXT_PUBLIC_JOBPILOT_WORKER_URL;
-  if (!url) return;
-  fetch(`${url.replace(/\/$/, "")}/health`, { mode: "no-cors", cache: "no-store" }).catch(() => {});
+  if (!process.env.NEXT_PUBLIC_JOBPILOT_WORKER_URL) return;
+  fetch("/api/jobpilot/wake", { method: "POST", cache: "no-store" }).catch(() => {});
 }
 
 // Queues a "draft" run for one found job. Returns { run } or { error }.

@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 import DraftsPanel, { LABEL_STYLES } from "../../components/DraftsPanel";
 import { BookmarkToggle, MoreMenu } from "../../components/CardControls";
+import { wakeWorker } from "../../lib/jobpilotClient";
 
 const TABS = [
   { id: "activity", label: "Run & activity" },
@@ -15,14 +16,9 @@ const TABS = [
 const ACTIVE = ["queued", "running"];
 const POLL_MS = 3000;
 const WORKER_ONLINE_SECONDS = 60;
-// Hosted worker (e.g. Render free web service) sleeps when idle; pinging /health wakes it.
 const WORKER_URL = process.env.NEXT_PUBLIC_JOBPILOT_WORKER_URL;
 const KEEP_AWAKE_MS = 4 * 60 * 1000;
-
-const wakeWorker = () => {
-  if (!WORKER_URL) return;
-  fetch(`${WORKER_URL.replace(/\/$/, "")}/health`, { mode: "no-cors", cache: "no-store" }).catch(() => {});
-};
+const WAKE_RETRY_MS = 20 * 1000;
 
 const RUN_STYLES = {
   queued: "bg-zinc-500/20 text-zinc-300 border-zinc-500/40",
@@ -236,12 +232,14 @@ export default function JobPilotPage() {
   }, [user, running, loadRuns, loadEvents, loadSetup, loadJobs]);
 
   // Keep a sleeping hosted worker awake for as long as a run is queued or running.
+  // While queued, ping often until the worker picks the run up; while running, just keep it awake.
+  const queued = latestRun?.status === "queued";
   useEffect(() => {
     if (!running) return undefined;
     wakeWorker();
-    const timer = setInterval(wakeWorker, KEEP_AWAKE_MS);
+    const timer = setInterval(wakeWorker, queued ? WAKE_RETRY_MS : KEEP_AWAKE_MS);
     return () => clearInterval(timer);
-  }, [running]);
+  }, [running, queued]);
 
   // Keep the worker status fresh even when idle.
   useEffect(() => {
