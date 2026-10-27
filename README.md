@@ -1,98 +1,37 @@
-# ⚙️ JobChain
+# Job-Chain
 
-JobChain is a hybrid **Web3 + AI-powered job tracking system** designed to bring transparency, verifiability, and intelligence to the hiring ecosystem.
+Job-Chain helps you find jobs, track your applications, and apply faster.
 
-The platform aims to combine **on-chain credentials**, **off-chain job data**, and **AI assistance** to create a smarter way to discover, track, and validate job applications.
+- **Jobs:** browse remote openings (Remotive) and bookmark the ones you like.
+- **Applied:** track every application and move it through applied, interview, offer or rejected.
+- **JobPilot:** finds matching jobs across Europe (EURES, Arbeitnow), scores them against your
+  profile with transparent rules (no AI), and drafts tailored application emails with your CV.
+  You review every draft, and only approved ones are sent, from your own Gmail.
 
-> ⚠️ This project is currently under active development. Core features are being built incrementally.
+## Tech stack
 
----
+- Next.js 15 (JavaScript) and Tailwind CSS, deployed on Vercel
+- Supabase: email/password auth, Postgres with row-level security, private storage for CVs
+- Google OAuth with the send-only Gmail scope, so each user sends from their own Gmail
+- JobPilot worker (Python) in the separate `jobchain-backend` repo, deployed on Render
 
-## 🚧 Current Features (MVP - In Progress)
+## Run locally
 
-- 🔐 **Wallet Authentication**
-  - Login using MetaMask
-  - Secure Web3-based identity (no traditional email/password)
-
-- 📄 **Job Listings UI**
-  - Browse available job opportunities
-  - View job details and apply options
-
-- 🔗 **Web3 Integration (Foundation)**
-  - Wallet connection layer ready for future on-chain interactions
-
----
-
-## 🛠️ Tech Stack
-
-- **Frontend:** Next.js, React, TypeScript  
-- **UI:** Tailwind CSS, ShadCN UI  
-- **Web3:** Wallet Authentication (MetaMask)  
-- **Backend (Planned):** Node.js  
-- **Database (Planned):** MongoDB  
-- **Blockchain (Planned):** EAS, SBTs  
-
----
-
-## 🎯 Vision
-
-JobChain aims to solve key problems in hiring:
-
-- ❌ Fake resumes and unverifiable experience  
-- ❌ Lack of transparency in job applications  
-- ❌ No structured tracking of job search progress  
-- ❌ Poor feedback loops for candidates  
-
-### ✅ The Goal:
-Create a system where:
-- Credentials are **verifiable on-chain**
-- Applications are **trackable and structured**
-- Candidates get **intelligent insights and guidance**
-- Recruiters can **trust candidate data**
-
----
-
-## 🚀 Future Enhancements
-
-### 🔗 Web3 Features
-- On-chain credential verification using **EAS (Ethereum Attestation Service)**
-- Soulbound Tokens (SBTs) for verified achievements
-- Decentralized identity layer for candidates
-
----
-
-### 🤖 AI Layer (Planned)
-- AI assistant for:
-  - Resume improvement
-  - Job matching
-  - Application tracking insights
-- Smart recommendations based on user activity
-
----
-
-### 📊 Job Tracking System
-- Track applied jobs (status, stages, notes)
-- Timeline-based application history
-- Analytics dashboard (success rate, response patterns)
-
----
-
-### 🧠 Smart Features
-- Skill gap analysis based on job requirements
-- Personalized job recommendations
-- Auto-suggestions for improving applications
-
----
-
-## 📌 Project Status
-
-> 🚧 Actively being developed  
-> Current focus: Expanding core job tracking + backend integration
-
----
-
-## 🧪 Local Setup
-
-```bash
+```sh
 npm install
 npm run dev
+```
+
+Create `.env.local` with:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_JOBPILOT_WORKER_URL=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GMAIL_TOKEN_KEY=
+```
+
+`GMAIL_TOKEN_KEY` must match the JobPilot worker's value. The database schema is in
+`supabase/schema.sql`; the JobPilot design is in `docs/JOBPILOT_INTEGRATION.md`.

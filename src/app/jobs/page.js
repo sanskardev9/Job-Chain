@@ -506,7 +506,7 @@ export default function JobsPage() {
         </p>
       </div>
 
-      <div className="sticky top-0 z-40 bg-zinc-950/80 backdrop-blur-lg py-6">
+      <div className="sticky top-16 z-40 bg-zinc-950/80 backdrop-blur-lg py-6">
         <div className="max-w-xl mx-auto mb-0 sm:mb-2 ">
           <input
             type="text"

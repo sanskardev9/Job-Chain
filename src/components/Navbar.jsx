@@ -120,7 +120,7 @@ export default function Navbar() {
   };
 
   return (
-    <header className="w-full flex items-center justify-between gap-3 bg-zinc-950 p-4 sm:p-4 shadow-md border-b border-zinc-800 text-white relative">
+    <header className="sticky top-0 z-50 h-16 w-full flex items-center justify-between gap-3 bg-zinc-950 px-4 shadow-md border-b border-zinc-800 text-white">
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <Image
           src="/chain.png"

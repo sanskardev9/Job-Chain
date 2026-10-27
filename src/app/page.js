@@ -1,71 +1,92 @@
-"use client";
-
-import { useState } from "react";
 import Image from "next/image";
-import { Search } from "lucide-react";
 import Link from "next/link";
 
+const FEATURES = [
+  {
+    title: "Browse remote jobs",
+    text: "Search fresh remote openings, bookmark the ones you like, and open the listing in one click.",
+    href: "/jobs",
+    cta: "Browse jobs",
+  },
+  {
+    title: "Track every application",
+    text: "Keep all your applications in one place and move them from applied to interview, offer or rejected.",
+    href: "/applied",
+    cta: "View applied",
+  },
+  {
+    title: "Let JobPilot apply for you",
+    text: "JobPilot finds matching jobs across Europe, scores them against your profile and drafts tailored emails with your CV. Nothing is sent until you approve it.",
+    href: "/jobpilot",
+    cta: "Open JobPilot",
+  },
+];
+
+const STEPS = [
+  "Fill in your profile and upload your CV",
+  "Connect your Gmail (send-only)",
+  "Click “Find jobs now” and review the matches",
+  "Approve the drafts you like, and JobPilot sends them",
+];
+
 export default function Home() {
-  const [jobSearch, setJobSearch] = useState("");
-
-  const handleSearch = () => {
-    console.log(`Searching for ${jobSearch}`);
-  };
-
   return (
-    <div className="min-h-full bg-zinc-950 text-white flex flex-col items-center px-6 py-20">
-      {/* Main Content */}
-      <main className="text-center w-full max-w-3xl">
+    <div className="min-h-full bg-zinc-950 text-white px-6 py-16 sm:py-20">
+      <section className="mx-auto max-w-3xl text-center">
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <Image
-            className="animate-bounce"
-            src="/chain.png"
-            alt="Job-Chain logo"
-            width={70}
-            height={38}
-            priority
-          />
-          <h2 className="text-3xl sm:text-5xl font-extrabold tracking-tight transition duration-300 hover:text-purple-500 hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)]">
-            Welcome to Job-Chain!
-          </h2>
+          <Image src="/chain.png" alt="Job-Chain logo" width={56} height={30} priority />
+          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight transition duration-300 hover:text-purple-500 hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)]">
+            Welcome to Job-Chain
+          </h1>
         </div>
-        <h2 className="text-2xl sm:text-3xl font-bold mt-6 sm:mt-25 text-zinc-200">
-          Find Your Dream Job With the Power of Blockchain
-        </h2>
+        <p className="mt-6 text-xl sm:text-2xl font-bold text-zinc-200">
+          Find jobs, track applications, and apply faster.
+        </p>
+        <p className="mt-3 text-zinc-400 sm:text-lg">
+          Browse remote openings, keep every application organised, and let JobPilot match you to jobs
+          and draft applications you approve.
+        </p>
+        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <Link
+            href="/jobs"
+            className="w-full sm:w-auto rounded-xl bg-white px-6 py-3 font-semibold text-black shadow-md transition duration-200 hover:scale-105 hover:bg-purple-600 hover:text-white"
+          >
+            Let the hunt begin
+          </Link>
+          <Link
+            href="/jobpilot"
+            className="w-full sm:w-auto rounded-xl border border-zinc-700 px-6 py-3 font-semibold transition duration-200 hover:border-purple-500 hover:text-purple-300"
+          >
+            Try JobPilot
+          </Link>
+        </div>
+      </section>
 
-        {/* Job Search */}
-        <div className="flex justify-center items-center">
-          <div className="relative w-full max-w-md mt-5 mx-auto">
-            <p className="text-md text-zinc-400 italic mb-2 sm:text-lg">
-              {/* Apply, Prove and Track it — On-Chain. */}“ Search. Apply.
-              Prove it — All On-Chain.”
-            </p>
-
-            <Link
-              className="block ml-4 w-8/9 sm:ml-23.5 sm:w-3/5 mt-5 bg-white text-black font-semibold py-3 rounded-xl shadow-md focus:outline-none hover:scale-105  hover:bg-purple-600 hover:text-white transition duration-200"
-              href={"/jobs"}
-            >
-              Let The Hunt Begin
+      <section className="mx-auto mt-16 grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-3">
+        {FEATURES.map((feature) => (
+          <div key={feature.title} className="flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+            <h2 className="text-lg font-semibold">{feature.title}</h2>
+            <p className="mt-2 text-sm text-zinc-400">{feature.text}</p>
+            <Link href={feature.href} className="mt-auto pt-4 text-sm font-semibold text-purple-300 hover:underline">
+              {feature.cta} →
             </Link>
           </div>
-        </div>
-      </main>
+        ))}
+      </section>
+
+      <section className="mx-auto mt-12 max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6">
+        <h2 className="text-lg font-semibold">How JobPilot works</h2>
+        <ol className="mt-4 space-y-3">
+          {STEPS.map((step, index) => (
+            <li key={step} className="flex items-start gap-3 text-zinc-300">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-purple-500/50 bg-purple-500/15 text-xs font-semibold text-purple-200">
+                {index + 1}
+              </span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
     </div>
   );
-}
-
-{
-  /* <div>
-            <Search
-              className="absolute left-3 top-15.5 transform -translate-y-1/2 text-zinc-500 "
-              size={20}
-            />
-            <input
-              type="text"
-              placeholder="Search for Jobs"
-              value={jobSearch}
-              onChange={(e) => setJobSearch(e.target.value)}
-              className="w-full p-3 pr-20 pl-10 text-lg bg-zinc-900 border border-zinc-700 rounded-xl placeholder-zinc-500 text-white shadow focus:outline-none focus:ring-2 focus:ring-purple-600 focus:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] duration-200"
-            />
-          </div> */
 }
