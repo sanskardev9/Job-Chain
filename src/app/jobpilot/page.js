@@ -40,6 +40,18 @@ const EVENT_STYLES = {
   step: "text-blue-300 font-semibold",
 };
 
+// Same job reposted (other source/URL): compare company + title without gender tags or legal suffixes.
+const jobKey = (job) => {
+  const clean = (text) =>
+    (text || "")
+      .toLowerCase()
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/\b(gmbh|ag|se|kg|b\.?v\.?|ltd|inc|llc|deutschland|germany)\b/g, " ")
+      .replace(/[^a-z0-9äöüß]+/g, " ")
+      .trim();
+  return `${clean(job.company)}|${clean(job.title)}`;
+};
+
 const time = (value) =>
   value ? new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
 const dateTime = (value) =>
@@ -80,6 +92,8 @@ export default function JobPilotPage() {
   const [events, setEvents] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [jobFilter, setJobFilter] = useState("all");
+  const [appliedJobs, setAppliedJobs] = useState([]);
+  const [markingId, setMarkingId] = useState("");
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [draftsKey, setDraftsKey] = useState(0);
@@ -147,15 +161,23 @@ export default function JobPilotPage() {
   }, []);
 
   const loadJobs = useCallback(async (currentUser) => {
-    const { data } = await supabase
-      .from("discovered_jobs")
-      .select("id, title, company, location, country, source, source_url, match_label, score, blockers, unknowns, matched_skills, missing_skills, apply_email, evaluated_at")
-      .eq("user_id", currentUser.id)
-      .eq("dismissed", false)
-      .not("evaluated_at", "is", null)
-      .order("evaluated_at", { ascending: false })
-      .limit(100);
+    const [{ data }, { data: applied }] = await Promise.all([
+      supabase
+        .from("discovered_jobs")
+        .select("id, title, company, location, country, source, source_url, apply_url, match_label, score, blockers, unknowns, matched_skills, missing_skills, apply_email, evaluated_at")
+        .eq("user_id", currentUser.id)
+        .eq("dismissed", false)
+        .not("evaluated_at", "is", null)
+        .order("evaluated_at", { ascending: false })
+        .limit(300),
+      supabase
+        .from("jobs")
+        .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via")
+        .eq("user_id", currentUser.id)
+        .not("applied_at", "is", null),
+    ]);
     setJobs(data || []);
+    setAppliedJobs(applied || []);
   }, []);
 
   useEffect(() => {
@@ -239,6 +261,32 @@ export default function JobPilotPage() {
     if (!error) setJobs((prev) => prev.filter((j) => j.id !== jobId));
   };
 
+  // For jobs applied to outside JobPilot: records it in Applied so it is never drafted or sent again.
+  const markApplied = async (job) => {
+    setMarkingId(job.id);
+    const { data, error } = await supabase
+      .from("jobs")
+      .insert({
+        user_id: user.id,
+        title: job.title,
+        company: job.company,
+        location: [job.location, job.country].filter(Boolean).join(", ") || null,
+        job_url: job.apply_url || job.source_url,
+        status: "applied",
+        applied_at: new Date().toISOString(),
+        applied_via: "manual",
+        discovered_job_id: job.id,
+      })
+      .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via")
+      .single();
+    if (error) {
+      console.error("Failed to mark as applied", error);
+    } else {
+      setAppliedJobs((prev) => [...prev, data]);
+    }
+    setMarkingId("");
+  };
+
   if (loading) {
     return (
       <div className="min-h-[calc(100svh-9rem)] bg-zinc-950 text-white flex items-center justify-center">
@@ -275,11 +323,25 @@ export default function JobPilotPage() {
         : setup?.approved === 0
         ? "Approve drafts in the Drafts tab first"
         : `Sends up to ${profile.max_sends_per_run} approved email(s)`;
+  const appliedById = new Map(appliedJobs.filter((a) => a.discovered_job_id).map((a) => [a.discovered_job_id, a]));
+  const appliedByUrl = new Map(appliedJobs.filter((a) => a.job_url).map((a) => [a.job_url, a]));
+  const appliedByKey = new Map(appliedJobs.map((a) => [jobKey(a), a]));
+  const appliedFor = (job) =>
+    appliedById.get(job.id) ||
+    appliedByUrl.get(job.source_url) ||
+    appliedByUrl.get(job.apply_url) ||
+    appliedByKey.get(jobKey(job)) ||
+    null;
   const jobCounts = ["strong", "possible", "unlikely"].reduce(
-    (acc, label) => ({ ...acc, [label]: jobs.filter((j) => j.match_label === label).length }),
-    {}
+    (acc, label) => ({ ...acc, [label]: jobs.filter((j) => j.match_label === label && !appliedFor(j)).length }),
+    { applied: jobs.filter((j) => appliedFor(j)).length }
   );
-  const visibleJobs = jobFilter === "all" ? jobs : jobs.filter((j) => j.match_label === jobFilter);
+  const visibleJobs =
+    jobFilter === "all"
+      ? jobs
+      : jobFilter === "applied"
+        ? jobs.filter((j) => appliedFor(j))
+        : jobs.filter((j) => j.match_label === jobFilter && !appliedFor(j));
 
   return (
     <div className="min-h-full bg-zinc-950 px-6 text-white pb-6">
@@ -475,7 +537,7 @@ export default function JobPilotPage() {
         {tab === "jobs" ? (
           <section>
             <div className="flex flex-wrap gap-2">
-              {["all", "strong", "possible", "unlikely"].map((f) => (
+              {["all", "strong", "possible", "unlikely", "applied"].map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -496,14 +558,24 @@ export default function JobPilotPage() {
               </div>
             ) : (
               <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {visibleJobs.map((job) => (
-                  <div key={job.id} className="flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+                {visibleJobs.map((job) => {
+                  const applied = appliedFor(job);
+                  return (
+                  <div key={job.id} className={`flex flex-col rounded-2xl border p-5 ${
+                    applied ? "border-emerald-500/30 bg-zinc-900/60" : "border-zinc-800 bg-zinc-900"
+                  }`}>
                     <div className="flex items-start justify-between gap-3">
                       <h3 className="font-semibold">{job.title}</h3>
                       <span className={`shrink-0 text-xs font-semibold capitalize ${LABEL_STYLES[job.match_label] || ""}`}>
                         {job.match_label} · {job.score}
                       </span>
                     </div>
+                    {applied ? (
+                      <p className="mt-1 inline-flex w-fit items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">
+                        ✓ Applied {new Date(applied.applied_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                        {applied.applied_via === "email" ? " via JobPilot" : ""}
+                      </p>
+                    ) : null}
                     <p className="text-sm text-zinc-300">{job.company}</p>
                     <p className="text-xs text-zinc-500">
                       {[job.location, job.country].filter(Boolean).join(", ")} · {job.source}
@@ -525,13 +597,20 @@ export default function JobPilotPage() {
                         className="rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition">
                         View vacancy
                       </a>
+                      {!applied ? (
+                        <button type="button" onClick={() => markApplied(job)} disabled={markingId === job.id}
+                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-emerald-500 hover:text-emerald-300 transition disabled:opacity-50">
+                          Mark as applied
+                        </button>
+                      ) : null}
                       <button type="button" onClick={() => dismissJob(job.id)}
                         className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition">
                         Dismiss
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>
