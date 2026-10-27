@@ -96,6 +96,8 @@ export default function ProfilePage() {
   const [cv, setCv] = useState(null);
   const [cvBusy, setCvBusy] = useState(false);
   const [cvError, setCvError] = useState("");
+  const [cvOpening, setCvOpening] = useState(false);
+  const [confirmRemoveCv, setConfirmRemoveCv] = useState(false);
   const [gmail, setGmail] = useState(null);
   const [gmailBusy, setGmailBusy] = useState(false);
   const [gmailMessage, setGmailMessage] = useState("");
@@ -240,16 +242,30 @@ export default function ProfilePage() {
     setCvBusy(false);
   };
 
+  // Mobile browsers block tabs opened after an await, so open the tab during the tap and point
+  // it at the CV once the temporary link is ready.
   const viewCv = async () => {
     setCvError("");
-    const { data, error } = await supabase.storage
-      .from(CV_BUCKET)
-      .createSignedUrl(cv.path, 60);
+    setCvOpening(true);
+    const tab = window.open("", "_blank");
+    if (tab) {
+      tab.document.title = "Opening CV…";
+      tab.document.body.style.cssText = "margin:0;display:grid;place-items:center;height:100vh;background:#09090b;color:#a1a1aa;font-family:system-ui,sans-serif";
+      tab.document.body.textContent = "Opening your CV…";
+    }
+    const { data, error } = await supabase.storage.from(CV_BUCKET).createSignedUrl(cv.path, 60);
+    setCvOpening(false);
     if (error) {
+      tab?.close();
       setCvError(error.message);
       return;
     }
-    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    if (tab) {
+      tab.location.href = data.signedUrl;
+    } else {
+      // Popup blocked anyway: open it in this tab instead.
+      window.location.href = data.signedUrl;
+    }
   };
 
   const removeCv = async () => {
@@ -270,6 +286,7 @@ export default function ProfilePage() {
       setCv(null);
     }
     setCvBusy(false);
+    setConfirmRemoveCv(false);
   };
 
   const connectGmail = async () => {
@@ -520,11 +537,11 @@ export default function ProfilePage() {
               {cv ? (
                 <>
                   <span className="text-zinc-200 truncate max-w-full">{cv.filename}</span>
-                  <button type="button" onClick={viewCv} disabled={cvBusy}
-                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50">
-                    View
+                  <button type="button" onClick={viewCv} disabled={cvBusy || cvOpening}
+                    className="whitespace-nowrap rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50">
+                    {cvOpening ? "Opening…" : "View"}
                   </button>
-                  <button type="button" onClick={removeCv} disabled={cvBusy}
+                  <button type="button" onClick={() => setConfirmRemoveCv(true)} disabled={cvBusy}
                     className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50">
                     Remove
                   </button>
@@ -605,6 +622,35 @@ export default function ProfilePage() {
           {saving ? "Saving..." : "Save profile"}
         </button>
       </form>
+
+      {confirmRemoveCv ? (
+        <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center px-4">
+          <div role="dialog" aria-modal="true" className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-white">Remove your CV?</h3>
+            <p className="mt-2 text-sm text-zinc-400">
+              {cv?.filename} will be deleted. JobPilot can&apos;t send applications until you upload a CV again.
+            </p>
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmRemoveCv(false)}
+                disabled={cvBusy}
+                className="whitespace-nowrap rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-zinc-500 transition disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={removeCv}
+                disabled={cvBusy}
+                className="whitespace-nowrap rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 transition disabled:opacity-60"
+              >
+                {cvBusy ? "Removing…" : "Remove CV"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
