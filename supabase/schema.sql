@@ -540,3 +540,25 @@ as $$
 $$;
 revoke all on function public.run_queue_position(uuid) from public, anon;
 grant execute on function public.run_queue_position(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Shared job pool: vacancies fetched once for all users (worker-only: RLS on, no policies).
+-- job_pool_fetches records when each keyword ("kw:<keyword>") or feed ("feed:<source>") was fetched.
+-- ---------------------------------------------------------------------------
+
+create table if not exists public.job_pool (
+  source_url text primary key,
+  source text not null,
+  data jsonb not null,
+  content_hash text,
+  fetched_at timestamptz not null default now()
+);
+create index if not exists job_pool_fetched_idx on public.job_pool (fetched_at desc);
+
+create table if not exists public.job_pool_fetches (
+  key text primary key,
+  fetched_at timestamptz not null default now()
+);
+
+alter table public.job_pool enable row level security;
+alter table public.job_pool_fetches enable row level security;
