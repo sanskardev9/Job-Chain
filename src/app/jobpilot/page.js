@@ -108,6 +108,8 @@ export default function JobPilotPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [draftsKey, setDraftsKey] = useState(0);
+  // { ahead, running } for my queued run: how many other users' runs are in front of it.
+  const [queueInfo, setQueueInfo] = useState(null);
   const logRef = useRef(null);
   const lastEventId = useRef(0);
   const shownRunId = useRef(null);
@@ -232,6 +234,20 @@ export default function JobPilotPage() {
   }, [user, running, loadRuns, loadEvents, loadSetup, loadJobs]);
 
   // Keep a sleeping hosted worker awake for as long as a run is queued or running.
+  useEffect(() => {
+    if (latestRun?.status !== "queued") {
+      setQueueInfo(null);
+      return undefined;
+    }
+    const check = async () => {
+      const { data } = await supabase.rpc("run_queue_position", { p_run_id: latestRun.id });
+      setQueueInfo(data?.[0] || null);
+    };
+    check();
+    const timer = setInterval(check, POLL_MS);
+    return () => clearInterval(timer);
+  }, [latestRun?.id, latestRun?.status]);
+
   // While queued, ping often until the worker picks the run up; while running, just keep it awake.
   const queued = latestRun?.status === "queued";
   useEffect(() => {
@@ -438,7 +454,11 @@ export default function JobPilotPage() {
             <p className="mt-2 text-sm text-zinc-400">
               {running
                 ? latestRun.status === "queued"
-                  ? setup?.workerOnline
+                  ? queueInfo && (queueInfo.ahead > 0 || queueInfo.running > 0)
+                    ? queueInfo.ahead > 0
+                      ? `#${queueInfo.ahead + 1} in line. Other users' searches are running first; yours starts automatically.`
+                      : `Next in line. Starts as soon as a slot is free (${queueInfo.running} run${queueInfo.running === 1 ? "" : "s"} in progress).`
+                    : setup?.workerOnline
                     ? "Waiting for the JobPilot worker to pick this up…"
                     : WORKER_URL
                       ? "Queued. Waking up the JobPilot worker, this can take about a minute…"

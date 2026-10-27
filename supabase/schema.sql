@@ -522,3 +522,21 @@ alter table public.pipeline_runs
   add column if not exists recipient text;
 alter table public.pipeline_runs drop constraint if exists pipeline_runs_kind_check;
 alter table public.pipeline_runs add constraint pipeline_runs_kind_check check (kind in ('search', 'send', 'draft'));
+
+-- Queue position of the caller's own queued run (1 = next), plus how many runs are running.
+-- Reveals only counts, never other users' runs.
+create or replace function public.run_queue_position(p_run_id uuid)
+returns table (ahead integer, running integer)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    (select count(*)::int from pipeline_runs q, pipeline_runs mine
+      where mine.id = p_run_id and mine.user_id = auth.uid() and mine.status = 'queued'
+        and q.status = 'queued' and q.requested_at < mine.requested_at),
+    (select count(*)::int from pipeline_runs where status = 'running');
+$$;
+revoke all on function public.run_queue_position(uuid) from public, anon;
+grant execute on function public.run_queue_position(uuid) to authenticated;
