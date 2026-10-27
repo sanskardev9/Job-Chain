@@ -6,6 +6,7 @@ import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 import { LABEL_STYLES } from "../../components/DraftsPanel";
 import { BookmarkToggle, MoreMenu } from "../../components/CardControls";
+import { EMAIL_RE, requestDraft, runState, wakeWorker } from "../../lib/jobpilotClient";
 
 const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 const HIDDEN_EMPLOYER = /^(siehe beschreibung|see description|confidential|vertraulich|anonym(ous)?)$/i;
@@ -16,6 +17,9 @@ export default function BookmarksPage() {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
   const [busyId, setBusyId] = useState("");
+  // Row id -> { runId, status, error } for applications being written; row id -> typed email.
+  const [writing, setWriting] = useState({});
+  const [emails, setEmails] = useState({});
 
   useEffect(() => {
     const load = async () => {
@@ -43,6 +47,40 @@ export default function BookmarksPage() {
     };
     load();
   }, []);
+
+  // Follow draft runs until the worker finishes them.
+  useEffect(() => {
+    const active = Object.entries(writing).filter(([, w]) => w.runId && ["queued", "running"].includes(w.status));
+    if (!active.length) return undefined;
+    const timer = setInterval(async () => {
+      for (const [rowId, w] of active) {
+        const state = await runState(w.runId);
+        if (state && state.status !== w.status) {
+          setWriting((prev) => ({ ...prev, [rowId]: { ...prev[rowId], status: state.status, error: state.error } }));
+        }
+      }
+    }, 3000);
+    const keepAwake = setInterval(wakeWorker, 4 * 60 * 1000);
+    return () => {
+      clearInterval(timer);
+      clearInterval(keepAwake);
+    };
+  }, [writing]);
+
+  const writeApplication = async (row) => {
+    const job = row.discovered_jobs || {};
+    const typed = (emails[row.id] || "").trim();
+    if (!job.apply_email && !EMAIL_RE.test(typed)) {
+      setEmails((prev) => ({ ...prev, [row.id]: prev[row.id] ?? "" }));
+      return;
+    }
+    setWriting((prev) => ({ ...prev, [row.id]: { status: "starting" } }));
+    const { run, error } = await requestDraft(user.id, row.discovered_job_id, job.apply_email ? null : typed);
+    setWriting((prev) => ({
+      ...prev,
+      [row.id]: error ? { status: "failed", error } : { runId: run.id, status: run.status },
+    }));
+  };
 
   const removeRow = (id) => {
     setRows((prev) => prev.filter((row) => row.id !== id));
@@ -124,6 +162,7 @@ export default function BookmarksPage() {
               const job = row.discovered_jobs || {};
               const company = HIDDEN_EMPLOYER.test((row.company || "").trim()) ? "Employer not named" : row.company;
               const busy = busyId === row.id;
+              const write = writing[row.id];
               return (
                 <div key={row.id} className="relative flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900 p-5 shadow-lg hover:shadow-purple-800/40 transition-shadow duration-300">
                   <BookmarkToggle saved disabled={busy} onToggle={() => unsave(row)} />
@@ -155,14 +194,59 @@ export default function BookmarksPage() {
                   <p className="mt-2 text-xs text-zinc-500">
                     {job.apply_email ? `Apply by email: ${job.apply_email}` : "No application email listed: apply on the vacancy page"}
                   </p>
+                  {!job.apply_email && emails[row.id] !== undefined && !write?.runId ? (
+                    <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+                      <label className="block text-xs text-zinc-400" htmlFor={`email-${row.id}`}>
+                        No email in the posting. Paste the application email from the vacancy page:
+                      </label>
+                      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                        <input
+                          id={`email-${row.id}`}
+                          type="email"
+                          placeholder="jobs@company.com"
+                          value={emails[row.id]}
+                          onChange={(e) => setEmails((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                          className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => writeApplication(row)}
+                          disabled={!EMAIL_RE.test((emails[row.id] || "").trim())}
+                          className="whitespace-nowrap rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50"
+                        >
+                          Write it
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {write ? (
+                    <p className={`mt-3 text-sm ${
+                      write.status === "finished" ? "text-emerald-300" : write.status === "failed" || write.status === "cancelled" ? "text-red-300" : "text-blue-300"
+                    }`}>
+                      {write.status === "finished" ? (
+                        <>
+                          Draft ready.{" "}
+                          <Link href="/jobpilot?tab=drafts" className="font-semibold underline">Review &amp; send →</Link>
+                        </>
+                      ) : write.status === "failed" || write.status === "cancelled" ? (
+                        write.error || "Could not write the application."
+                      ) : write.status === "queued" ? (
+                        "Queued. Waking up JobPilot, this can take about a minute…"
+                      ) : (
+                        "Writing your application…"
+                      )}
+                    </p>
+                  ) : null}
                   <div className="mt-auto pt-3 flex items-center gap-2">
                     {row.discovered_job_id ? (
-                      <Link
-                        href={`/jobpilot?job=${row.discovered_job_id}`}
-                        className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition"
+                      <button
+                        type="button"
+                        onClick={() => writeApplication(row)}
+                        disabled={busy || ["starting", "queued", "running"].includes(write?.status)}
+                        className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50"
                       >
-                        Write application
-                      </Link>
+                        {["starting", "queued", "running"].includes(write?.status) ? "Writing…" : "Write application"}
+                      </button>
                     ) : null}
                     <a
                       href={job.source_url || row.job_url}
