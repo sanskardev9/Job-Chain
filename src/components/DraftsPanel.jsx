@@ -31,6 +31,9 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
   const [filter, setFilter] = useState("draft");
   const [busyId, setBusyId] = useState("");
   const [errors, setErrors] = useState({});
+  const [selected, setSelected] = useState([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkError, setBulkError] = useState("");
 
   useEffect(() => {
     const loadDrafts = async () => {
@@ -81,6 +84,45 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
     setBusyId("");
   };
 
+  const toggleSelected = (id) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const bulkUpdate = async (status) => {
+    const chosen = drafts.filter((d) => selected.includes(d.id) && d.status === "draft");
+    if (!chosen.length) return;
+    setBulkBusy(true);
+    setBulkError("");
+    const columns = "id, status, approved_at, subject, body";
+    // Edited drafts keep their edits; the rest go in one request.
+    const clean = chosen.filter((d) => !d.dirty).map((d) => d.id);
+    const results = await Promise.all([
+      ...(clean.length
+        ? [supabase.from("application_drafts").update({ status }).in("id", clean).eq("user_id", user.id).select(columns)]
+        : []),
+      ...chosen
+        .filter((d) => d.dirty)
+        .map((d) =>
+          supabase
+            .from("application_drafts")
+            .update({ subject: d.subject, body: d.body, status })
+            .eq("id", d.id)
+            .eq("user_id", user.id)
+            .select(columns)
+        ),
+    ]);
+
+    const failed = results.find((r) => r.error);
+    if (failed) {
+      console.error("Failed to update drafts", failed.error);
+      setBulkError(failed.error.message);
+    }
+    const updated = Object.fromEntries(results.flatMap((r) => r.data || []).map((d) => [d.id, d]));
+    setDrafts((prev) => prev.map((d) => (updated[d.id] ? { ...d, ...updated[d.id], dirty: false } : d)));
+    setSelected((prev) => prev.filter((id) => !updated[id]));
+    onChange?.();
+    setBulkBusy(false);
+  };
+
   if (loading) {
     return (
       <div className="py-16 flex justify-center">
@@ -91,6 +133,9 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
 
   const counts = Object.fromEntries(FILTERS.map((f) => [f, drafts.filter((d) => inFilter(d, f)).length]));
   const visible = drafts.filter((d) => inFilter(d, filter));
+  const selectable = filter === "draft" ? visible.map((d) => d.id) : [];
+  const selectedVisible = selected.filter((id) => selectable.includes(id));
+  const allSelected = selectable.length > 0 && selectedVisible.length === selectable.length;
 
   return (
     <div>
@@ -111,6 +156,41 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
         ))}
       </div>
 
+      {selectable.length ? (
+        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+          <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-purple-600"
+              checked={allSelected}
+              disabled={bulkBusy}
+              onChange={() => setSelected(allSelected ? [] : selectable)}
+            />
+            Select all ({selectable.length})
+          </label>
+          <span className="text-sm text-zinc-500">{selectedVisible.length} selected</span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={bulkBusy || !selectedVisible.length}
+              onClick={() => bulkUpdate("approved")}
+              className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50"
+            >
+              Approve selected ({selectedVisible.length})
+            </button>
+            <button
+              type="button"
+              disabled={bulkBusy || !selectedVisible.length}
+              onClick={() => bulkUpdate("rejected")}
+              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50"
+            >
+              Reject selected
+            </button>
+          </div>
+          {bulkError ? <p className="w-full text-sm text-red-400">{bulkError}</p> : null}
+        </div>
+      ) : null}
+
       {visible.length === 0 ? (
         <div className="mt-6 rounded-2xl text-center border border-zinc-800 bg-zinc-900 p-8 text-zinc-400">
           {filter === "draft"
@@ -126,7 +206,17 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange }) {
             return (
               <div key={draft.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
+                  {selectable.includes(draft.id) ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${job.title}`}
+                      className="mt-2 h-4 w-4 accent-purple-600 cursor-pointer"
+                      checked={selected.includes(draft.id)}
+                      disabled={bulkBusy}
+                      onChange={() => toggleSelected(draft.id)}
+                    />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
                     <h2 className="text-xl font-semibold">{job.title}</h2>
                     <p className="text-zinc-300">
                       {job.company} · {[job.location, job.country].filter(Boolean).join(", ")}
