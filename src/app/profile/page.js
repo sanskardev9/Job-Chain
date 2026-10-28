@@ -6,6 +6,9 @@ import { supabase } from "../../lib/supabaseClient";
 import { startGmailConnect } from "../../lib/gmailClient";
 import Loader from "../../components/Loader";
 import PdfModal from "../../components/PdfModal";
+import SetupGuide from "../../components/SetupGuide";
+import { wakeWorker } from "../../lib/jobpilotClient";
+import { useRouter } from "next/navigation";
 
 const LANGUAGE_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2", "Native"];
 const SEND_MODES = [
@@ -87,6 +90,12 @@ function Field({ label, hint, children }) {
 
 export default function ProfilePage() {
   const [user, setUser] = useState(null);
+  // Setup checklist: details saved (skills), CV uploaded, Gmail connected.
+  const [detailsSaved, setDetailsSaved] = useState(false);
+  const [starting, setStarting] = useState(false);
+  // Checklist shows while setup is incomplete, during onboarding, or right after finishing it.
+  const [showGuide, setShowGuide] = useState(false);
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -140,6 +149,11 @@ export default function ProfilePage() {
         window.history.replaceState(null, "", "/profile");
       }
 
+      setDetailsSaved(Boolean(data?.skills?.length));
+      const params = new URLSearchParams(window.location.search);
+      setShowGuide(
+        !data?.skills?.length || !data?.cv_storage_path || !account || params.has("welcome") || params.has("gmail")
+      );
       if (data?.cv_storage_path) {
         setCv({ path: data.cv_storage_path, filename: data.cv_filename || "cv.pdf" });
       }
@@ -367,7 +381,25 @@ export default function ProfilePage() {
     }
     clearDraft(user.id);
     setDirty(false);
+    if (toList(form.skills).length) {
+      setDetailsSaved(true);
+      window.dispatchEvent(new CustomEvent("jobchain:profile-saved"));
+    }
     return null;
+  };
+
+  // Last setup step: run the first search and go to the matches.
+  const findFirstJobs = async () => {
+    setStarting(true);
+    wakeWorker();
+    const { error } = await supabase.from("pipeline_runs").insert({ user_id: user.id, kind: "search" });
+    if (error && error.code !== "23505") {
+      setErrorMessage(error.message);
+      setStarting(false);
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("jobchain:run-started"));
+    router.push("/jobpilot");
   };
 
   if (loading) {
@@ -405,8 +437,18 @@ export default function ProfilePage() {
         </p>
       </div>
 
+      {showGuide ? <SetupGuide
+        steps={[
+          { id: "setup-details", label: "Your details", hint: "Skills, experience, languages, where you want to work", done: detailsSaved },
+          { id: "setup-cv", label: "Your CV", hint: "PDF, attached to every application", done: Boolean(cv) },
+          { id: "setup-gmail", label: "Connect Gmail", hint: "Send-only: applications go from your address", done: Boolean(gmail) },
+        ]}
+        starting={starting}
+        onFinish={findFirstJobs}
+      /> : null}
+
       <form onSubmit={saveProfile} className="max-w-3xl mx-auto py-4 space-y-6">
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
+        <section id="setup-details" className="scroll-mt-24 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
           <h2 className="text-xl font-semibold">About you</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Name used in emails">
@@ -521,7 +563,7 @@ export default function ProfilePage() {
               placeholder="Frontend Developer, React Developer"
               onChange={(e) => setField("keywords", e.target.value)} />
           </Field>
-          <div>
+          <div id="setup-cv" className="scroll-mt-24">
             <span className="block text-sm font-semibold text-zinc-200 mb-1">CV</span>
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3">
               {cv ? (
@@ -553,7 +595,7 @@ export default function ProfilePage() {
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
           <h2 className="text-xl font-semibold">Sending</h2>
-          <div>
+          <div id="setup-gmail" className="scroll-mt-24">
             <span className="block text-sm font-semibold text-zinc-200 mb-1">Send from Gmail</span>
             <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3">
               {gmail ? (

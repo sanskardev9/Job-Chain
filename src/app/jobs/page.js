@@ -6,6 +6,7 @@ import { Search, Zap } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { runState, wakeWorker } from "../../lib/jobpilotClient";
 import { trackedIndex } from "../../lib/jobs";
+import { getSetupStatus, missingSetupText } from "../../lib/setup";
 import Loader from "../../components/Loader";
 import JobCard from "../../components/JobCard";
 import PublicJobs from "../../components/PublicJobs";
@@ -56,6 +57,7 @@ export default function JobsPage() {
   const [mine, setMine] = useState([]);
   const [tracked, setTracked] = useState([]);
   const [countries, setCountries] = useState([]);
+  const [setup, setSetup] = useState(null);
 
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("");
@@ -94,6 +96,7 @@ export default function JobsPage() {
       setMine(rows || []);
       setTracked(trackedRows || []);
       setCountries(profile?.target_countries || []);
+      getSetupStatus(currentUser.id).then(setSetup);
       setLoading(false);
     };
     load();
@@ -236,6 +239,7 @@ export default function JobsPage() {
       saved={index.savedFor(job)}
       applied={index.appliedFor(job)}
       onChange={handleChange}
+      setupMissing={missingSetupText(setup)}
     />
   );
 

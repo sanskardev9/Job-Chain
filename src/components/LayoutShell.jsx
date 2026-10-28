@@ -7,9 +7,15 @@ import Navbar from "./Navbar";
 import Footer from "./Footer";
 import Loader from "./Loader";
 import RunTray from "./RunTray";
+import { getSetupStatus } from "../lib/setup";
 
 // Pages only for signed-in users. Home, Jobs (view-only preview) and Login are public.
 const PRIVATE_PREFIXES = ["/bookmarks", "/applied", "/jobpilot", "/profile", "/drafts", "/gmail"];
+// Pages that need the profile details first: new users start with the setup on /profile.
+const NEEDS_PROFILE = ["/jobs", "/bookmarks", "/applied", "/jobpilot"];
+const needsProfile = (pathname) => NEEDS_PROFILE.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+const SETUP_DONE_KEY = "jobchain:profile-ready";
+
 const isPrivate = (pathname) => PRIVATE_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
 export default function LayoutShell({ children }) {
@@ -41,6 +47,47 @@ export default function LayoutShell({ children }) {
     if (pathname === "/") signedOut.current = false;
   }, [pathname]);
 
+  // undefined = checking, true = profile details saved, false = new user (send to setup)
+  const [profileReady, setProfileReady] = useState(undefined);
+  const userId = session?.user?.id;
+
+  useEffect(() => {
+    if (!userId) {
+      setProfileReady(undefined);
+      return;
+    }
+    let cached = false;
+    try {
+      cached = sessionStorage.getItem(SETUP_DONE_KEY) === userId;
+    } catch {
+      // ignore
+    }
+    if (cached) {
+      setProfileReady(true);
+      return;
+    }
+    getSetupStatus(userId).then((status) => {
+      setProfileReady(status.profile);
+      if (status.profile) {
+        try {
+          sessionStorage.setItem(SETUP_DONE_KEY, userId);
+        } catch {
+          // ignore
+        }
+      }
+    });
+    // Re-check after the profile is saved.
+    const onSaved = () => setProfileReady(true);
+    window.addEventListener("jobchain:profile-saved", onSaved);
+    return () => window.removeEventListener("jobchain:profile-saved", onSaved);
+  }, [userId, pathname]);
+
+  const toSetup = Boolean(userId) && needsProfile(pathname) && profileReady === false;
+
+  useEffect(() => {
+    if (toSetup) router.replace("/profile?welcome=1");
+  }, [toSetup, router]);
+
   const blocked = isPrivate(pathname) && session === null;
 
   useEffect(() => {
@@ -52,7 +99,7 @@ export default function LayoutShell({ children }) {
   }
 
   // Private page: show nothing until we know the visitor is signed in.
-  const waiting = isPrivate(pathname) && !session;
+  const waiting = (isPrivate(pathname) && !session) || (Boolean(userId) && needsProfile(pathname) && profileReady !== true);
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-950">

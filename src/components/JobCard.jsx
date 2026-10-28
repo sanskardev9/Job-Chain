@@ -22,11 +22,12 @@ const WRITING = ["starting", "queued", "running"];
  *        missing_skills?, nice_to_have_skills?, matched_skills? }
  * onChange({ type: "saved" | "unsaved" | "applied" | "dismissed", row?, discoveredId })
  */
-export default function JobCard({ job, userId, saved, applied, onChange }) {
+export default function JobCard({ job, userId, saved, applied, onChange, setupMissing }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [email, setEmail] = useState(null); // null = box closed
   const [write, setWrite] = useState(null); // { runId, status, error }
+  const [setupNote, setSetupNote] = useState("");
 
   useEffect(() => {
     if (!write?.runId || !WRITING.includes(write.status)) return undefined;
@@ -119,8 +120,13 @@ export default function JobCard({ job, userId, saved, applied, onChange }) {
       onChange?.({ type: "dismissed", discoveredId, sourceUrl: job.source_url });
     });
 
-  const writeApplication = () =>
-    run("write", async () => {
+  const writeApplication = () => {
+    // Quick apply needs the profile, CV and Gmail: say what is missing instead of failing later.
+    if (setupMissing) {
+      setSetupNote(setupMissing);
+      return undefined;
+    }
+    return run("write", async () => {
       const typed = (email || "").trim();
       if (!job.has_email && !EMAIL_RE.test(typed)) {
         setEmail(email ?? "");
@@ -131,6 +137,7 @@ export default function JobCard({ job, userId, saved, applied, onChange }) {
       const { run: started, error: runError } = await requestDraft(userId, discoveredId, job.has_email ? null : typed);
       setWrite(runError ? { status: "failed", error: runError } : { runId: started.id, status: started.status });
     });
+  };
 
   const writing = WRITING.includes(write?.status);
   const hidden = isHiddenEmployer(job.company);
@@ -245,7 +252,7 @@ export default function JobCard({ job, userId, saved, applied, onChange }) {
               </Link>
             </>
           ) : ["failed", "cancelled"].includes(write.status) ? (
-            write.error || "Could not write the application."
+            write.error?.replace(/^RuntimeError:\s*/, "") || "Could not write the application."
           ) : write.status === "queued" ? (
             "Queued. Waking up JobPilot, this can take about a minute…"
           ) : (
@@ -254,6 +261,14 @@ export default function JobCard({ job, userId, saved, applied, onChange }) {
         </p>
       ) : null}
       {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
+      {setupNote ? (
+        <p className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-200">
+          {setupNote}{" "}
+          <Link href="/profile?welcome=1" className="font-semibold underline">
+            Finish setup →
+          </Link>
+        </p>
+      ) : null}
 
       <div className="mt-auto pt-3 flex items-center gap-2">
         {applied ? null : job.has_email ? (
