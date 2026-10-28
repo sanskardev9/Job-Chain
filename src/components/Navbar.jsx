@@ -10,6 +10,7 @@ import { supabase } from "../lib/supabaseClient";
 const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 
 const LINKS = [
+  { href: "/", label: "Home" },
   { href: "/jobs", label: "Jobs" },
   { href: "/bookmarks", label: "Bookmarks", count: "bookmarks" },
   { href: "/applied", label: "Applied", count: "applied" },
@@ -275,6 +276,14 @@ export default function Navbar() {
         </>
       ) : (
         <div className="flex items-center gap-1 sm:gap-3">
+          <Link
+            href="/"
+            className={`hidden sm:inline whitespace-nowrap rounded-lg px-2 sm:px-3 py-1.5 text-sm font-semibold transition hover:text-purple-300 ${
+              pathname === "/" ? "text-purple-300" : "text-zinc-300"
+            }`}
+          >
+            Home
+          </Link>
           <Link
             href="/jobs"
             className={`whitespace-nowrap rounded-lg px-2 sm:px-3 py-1.5 text-sm font-semibold transition hover:text-purple-300 ${

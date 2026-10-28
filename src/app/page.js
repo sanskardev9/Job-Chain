@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
 
@@ -38,19 +37,22 @@ const NEVER = [
   "Guess recruiters' emails: it only uses addresses published in the job ad.",
 ];
 
+// Same page for everyone: visitors learn what JobChain does, signed-in users see how each part works.
+// Only the buttons change.
 export default function Home() {
-  const router = useRouter();
-  const [checked, setChecked] = useState(false);
+  // undefined = checking, false = visitor, true = signed in
+  const [signedIn, setSignedIn] = useState(undefined);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace("/jobs");
-      else setChecked(true);
-    });
-  }, [router]);
+    supabase.auth.getSession().then(({ data }) => setSignedIn(Boolean(data.session)));
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => setSignedIn(Boolean(session)));
+    return () => subscription.unsubscribe();
+  }, []);
 
-  // Signed-in users go straight to their jobs; avoid flashing this page for them.
-  if (!checked) return <div className="min-h-[calc(100svh-9rem)] bg-zinc-950" />;
+  const primary = signedIn ? { href: "/jobs", label: "Go to my jobs" } : { href: "/login?signup=1", label: "Get started, it's free" };
+  const secondary = signedIn ? { href: "/jobpilot", label: "Open JobPilot" } : { href: "/login", label: "I already have an account" };
 
   return (
     <div className="min-h-full bg-zinc-950 text-white px-4 sm:px-6 py-14 sm:py-20">
@@ -62,26 +64,35 @@ export default function Home() {
           Job-Chain finds fresh openings that fit your skills, tells you plainly whether each one is worth your time,
           and writes the application email for you. You read it. You press send.
         </p>
-        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <div className={`mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 ${signedIn === undefined ? "invisible" : ""}`}>
           <Link
-            href="/login?signup=1"
+            href={primary.href}
             className="w-full sm:w-auto whitespace-nowrap rounded-xl bg-white px-6 py-3 font-semibold text-black shadow-md transition duration-200 hover:scale-105 hover:bg-purple-600 hover:text-white"
           >
-            Get started, it&apos;s free
+            {primary.label}
           </Link>
           <Link
-            href="/login"
+            href={secondary.href}
             className="w-full sm:w-auto whitespace-nowrap rounded-xl border border-zinc-700 px-6 py-3 font-semibold transition duration-200 hover:border-purple-500 hover:text-purple-300"
           >
-            I already have an account
+            {secondary.label}
           </Link>
         </div>
-        <p className="mt-3 text-sm text-zinc-500">
-          Setup takes about five minutes.{" "}
-          <Link href="/jobs" className="text-purple-300 hover:underline">
-            Or look at today&apos;s jobs first →
-          </Link>
-        </p>
+        {signedIn === false ? (
+          <p className="mt-3 text-sm text-zinc-500">
+            Setup takes about five minutes.{" "}
+            <Link href="/jobs" className="text-purple-300 hover:underline">
+              Or look at today&apos;s jobs first →
+            </Link>
+          </p>
+        ) : signedIn ? (
+          <p className="mt-3 text-sm text-zinc-500">
+            Not getting matches?{" "}
+            <Link href="/profile" className="text-purple-300 hover:underline">
+              Check your profile →
+            </Link>
+          </p>
+        ) : null}
       </section>
 
       <section className="mx-auto mt-16 max-w-5xl">
@@ -129,10 +140,10 @@ export default function Home() {
       <section className="mx-auto mt-16 max-w-3xl text-center">
         <h2 className="text-2xl font-bold">Your next application could take a minute, not an hour.</h2>
         <Link
-          href="/login?signup=1"
+          href={signedIn ? "/jobs" : "/login?signup=1"}
           className="mt-6 inline-block whitespace-nowrap rounded-xl bg-white px-6 py-3 font-semibold text-black shadow-md transition duration-200 hover:scale-105 hover:bg-purple-600 hover:text-white"
         >
-          Create your free account
+          {signedIn ? "See my matches" : "Create your free account"}
         </Link>
       </section>
     </div>
