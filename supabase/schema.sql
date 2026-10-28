@@ -698,3 +698,33 @@ as $$
 $$;
 revoke all on function public.preview_countries() from public;
 grant execute on function public.preview_countries() to anon, authenticated;
+-- search_jobs with a "quick apply only" filter (jobs whose ad lists an application email).
+drop function if exists public.search_jobs(text, text, int, int);
+create or replace function public.search_jobs(p_query text default '', p_country text default '',
+                                              p_limit int default 30, p_offset int default 0,
+                                              p_email_only boolean default false)
+returns table (source_url text, source text, title text, company text, country text, location text,
+               posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public
+as $$
+  with q as (
+    select case when trim(coalesce(p_query, '')) = '' then null
+           else websearch_to_tsquery('simple', p_query) end as tsq
+  )
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220),
+         case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end
+  from public.job_pool p, q
+  where auth.uid() is not null
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 15
+    and (p.deadline is null or p.deadline >= current_date)
+    and (q.tsq is null or p.search @@ q.tsq)
+    and (coalesce(p_country, '') = '' or p.country ilike p_country)
+    and (not p_email_only or p.has_email)
+  order by case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end desc,
+           p.has_email desc,
+           coalesce(p.posted_at, p.fetched_at::date) desc
+  limit least(greatest(p_limit, 1), 60) offset greatest(p_offset, 0);
+$$;
+revoke all on function public.search_jobs(text, text, int, int, boolean) from public, anon;
+grant execute on function public.search_jobs(text, text, int, int, boolean) to authenticated;

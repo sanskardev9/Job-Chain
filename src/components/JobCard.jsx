@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabaseClient";
 import { EMAIL_RE, requestDraft, runState, wakeWorker } from "../lib/jobpilotClient";
 import { companyName, isHiddenEmployer } from "../lib/jobs";
 import { jobDates } from "../lib/dates";
+import { ExternalLink, Zap } from "lucide-react";
 import { BookmarkToggle, MoreMenu } from "./CardControls";
 import { LABEL_STYLES } from "./DraftsPanel";
 
@@ -138,7 +139,11 @@ export default function JobCard({ job, userId, saved, applied, onChange }) {
   return (
     <div
       className={`relative flex flex-col rounded-2xl border p-5 shadow-lg hover:shadow-purple-800/40 transition-shadow duration-300 ${
-        applied ? "border-emerald-500/30 bg-zinc-900/60" : "border-zinc-800 bg-zinc-900"
+        applied
+          ? "border-emerald-500/30 bg-zinc-900/60"
+          : job.has_email
+            ? "border-purple-500/30 bg-zinc-900"
+            : "border-zinc-800 bg-zinc-900"
       }`}
     >
       {!applied ? <BookmarkToggle saved={Boolean(saved)} disabled={busy === "save"} onToggle={toggleSaved} /> : null}
@@ -188,9 +193,13 @@ export default function JobCard({ job, userId, saved, applied, onChange }) {
       {!job.required_skills?.length && job.snippet ? (
         <p className="mt-2 line-clamp-3 text-xs text-zinc-400">{job.snippet}</p>
       ) : null}
-      <p className="mt-2 text-xs text-zinc-500">
-        {job.has_email ? "✉ Email application available" : "No application email listed: apply on the vacancy page"}
-      </p>
+      {job.has_email ? (
+        <p className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border border-purple-500/50 bg-purple-500/15 px-2.5 py-1 text-xs font-semibold text-purple-200">
+          <Zap size={13} className="fill-current" /> Quick apply: JobPilot writes and sends it for you
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-zinc-500">Applications go through the employer&apos;s site</p>
+      )}
 
       {!applied && !job.has_email && email !== null && !write?.runId ? (
         <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3">
@@ -247,27 +256,42 @@ export default function JobCard({ job, userId, saved, applied, onChange }) {
       {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
 
       <div className="mt-auto pt-3 flex items-center gap-2">
-        {!applied ? (
+        {applied ? null : job.has_email ? (
           <button
             type="button"
             onClick={writeApplication}
             disabled={Boolean(busy) || writing}
-            className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50"
           >
-            {writing ? "Writing…" : "Write application"}
+            <Zap size={14} className="fill-current" />
+            {writing ? "Writing…" : "Quick apply"}
           </button>
+        ) : (
+          <a
+            href={job.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition"
+          >
+            Apply on site <ExternalLink size={14} />
+          </a>
+        )}
+        {applied || job.has_email ? (
+          <a
+            href={job.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="whitespace-nowrap rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition"
+          >
+            View vacancy
+          </a>
         ) : null}
-        <a
-          href={job.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="whitespace-nowrap rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition"
-        >
-          View vacancy
-        </a>
         <MoreMenu
           disabled={Boolean(busy)}
           items={[
+            ...(!applied && !job.has_email
+              ? [{ label: "Found an email? Write application", onClick: writeApplication }]
+              : []),
             ...(!applied ? [{ label: "Mark as applied", tone: "success", onClick: markApplied }] : []),
             { label: "Not interested", tone: "danger", onClick: dismiss },
           ]}

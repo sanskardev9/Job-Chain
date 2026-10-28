@@ -128,7 +128,7 @@ export default function PublicJobs() {
                   <p className="text-xs text-zinc-500">{[job.location, job.country].filter(Boolean).join(", ")}</p>
                   {dates ? <p className="text-xs text-zinc-400">{dates}</p> : null}
                   <p className="mt-2 text-xs text-zinc-500">
-                    {job.has_email ? "✉ You can apply by email from JobChain" : "Apply on the employer's page"}
+                    {job.has_email ? "⚡ Quick apply: JobPilot can apply for you" : "Applications go through the employer's site"}
                   </p>
                   <div className="mt-auto pt-3 flex items-center gap-2">
                     <button

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, Zap } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { runState, wakeWorker } from "../../lib/jobpilotClient";
 import { trackedIndex } from "../../lib/jobs";
@@ -59,6 +59,8 @@ export default function JobsPage() {
 
   const [query, setQuery] = useState("");
   const [country, setCountry] = useState("");
+  // Only jobs whose ad lists an application email, so JobPilot can apply for you.
+  const [quickOnly, setQuickOnly] = useState(false);
   const [submitted, setSubmitted] = useState({ q: "", country: "" });
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
@@ -112,13 +114,14 @@ export default function JobsPage() {
   const mineByUrl = useMemo(() => new Map(mine.map((row) => [row.source_url, row])), [mine]);
 
   // Search the shared pool (all users' searches combined). Fewer than FEW_RESULTS: search live too.
-  const runSearch = useCallback(async (q, c, offset = 0) => {
+  const runSearch = useCallback(async (q, c, offset = 0, emailOnly = false) => {
     setSearching(true);
     const { data, error } = await supabase.rpc("search_jobs", {
       p_query: q,
       p_country: c,
       p_limit: PAGE_SIZE,
       p_offset: offset,
+      p_email_only: emailOnly,
     });
     if (error) console.error("Job search failed", error);
     const page = data || [];
@@ -129,8 +132,10 @@ export default function JobsPage() {
   }, []);
 
   useEffect(() => {
-    if (user) runSearch("", "", 0);
-  }, [user, runSearch]);
+    if (user) runSearch(submitted.q, submitted.country, 0, quickOnly);
+    // Re-run when the quick-apply filter changes; new searches go through submit().
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, runSearch, quickOnly]);
 
   const startLookup = useCallback(
     async (q) => {
@@ -159,7 +164,7 @@ export default function JobsPage() {
     const q = query.trim();
     setSubmitted({ q, country });
     setLookup(null);
-    const page = await runSearch(q, country, 0);
+    const page = await runSearch(q, country, 0, quickOnly);
     if (q && page.length < FEW_RESULTS) startLookup(q);
   };
 
@@ -170,14 +175,14 @@ export default function JobsPage() {
       const state = await runState(lookup.runId);
       if (!state || state.status === lookup.status) return;
       setLookup((prev) => ({ ...prev, status: state.status, error: state.error }));
-      if (state.status === "finished") runSearch(submitted.q, submitted.country, 0);
+      if (state.status === "finished") runSearch(submitted.q, submitted.country, 0, quickOnly);
     }, 3000);
     const wake = setInterval(wakeWorker, lookup.status === "queued" ? 20000 : 240000);
     return () => {
       clearInterval(poll);
       clearInterval(wake);
     };
-  }, [lookup, runSearch, submitted]);
+  }, [lookup, runSearch, submitted, quickOnly]);
 
   const handleChange = ({ type, row, discoveredId, sourceUrl }) => {
     if (type === "saved" || type === "applied") {
@@ -204,7 +209,13 @@ export default function JobsPage() {
     .filter((row) => ["strong", "possible"].includes(row.match_label) && !row.dismissed && isFresh(row))
     .map(fromMine)
     .filter((job) => !index.appliedFor(job))
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || String(b.posted_at || "").localeCompare(String(a.posted_at || "")));
+    .filter((job) => !quickOnly || job.has_email)
+    .sort(
+      (a, b) =>
+        Number(b.has_email) - Number(a.has_email) ||
+        (b.score ?? 0) - (a.score ?? 0) ||
+        String(b.posted_at || "").localeCompare(String(a.posted_at || ""))
+    );
 
   const shownResults = results
     .filter((r) => !mineByUrl.get(r.source_url)?.dismissed)
@@ -268,6 +279,24 @@ export default function JobsPage() {
             Search
           </button>
         </form>
+
+        <div className="-mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setQuickOnly((value) => !value)}
+            aria-pressed={quickOnly}
+            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm font-semibold transition ${
+              quickOnly
+                ? "border-purple-500 bg-purple-500/20 text-purple-100"
+                : "border-zinc-700 text-zinc-300 hover:border-purple-500 hover:text-purple-300"
+            }`}
+          >
+            <Zap size={14} className="fill-current" /> Quick apply only
+          </button>
+          <span className="text-xs text-zinc-500">
+            Quick apply jobs list an application email, so JobPilot can write and send it for you.
+          </span>
+        </div>
 
         {!submitted.q && !submitted.country ? (
           <section>
@@ -340,7 +369,7 @@ export default function JobsPage() {
               <button
                 type="button"
                 disabled={searching}
-                onClick={() => runSearch(submitted.q, submitted.country, results.length)}
+                onClick={() => runSearch(submitted.q, submitted.country, results.length, quickOnly)}
                 className="whitespace-nowrap rounded-xl border border-zinc-700 px-5 py-2.5 font-semibold hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50"
               >
                 {searching ? "Loading…" : "Load more"}
