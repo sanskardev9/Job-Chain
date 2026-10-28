@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowDown, Eye, KeyRound, MailCheck, ShieldCheck, UserCheck } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import HeroDemo from "../components/landing/HeroDemo";
-import { EmailMock, MatchesMock, ProfileMock, SentMock } from "../components/landing/Mockups";
+import { EmailMock, MatchesMock, ProfileMock, SAMPLE_PERSONA, SentMock } from "../components/landing/Mockups";
 
 const BEFORE_AFTER = [
   {
@@ -30,22 +30,22 @@ const STEPS = [
   {
     title: "Tell JobPilot who you are",
     text: "Your skills, experience, languages, where you want to work, whether you need a visa, and your CV. It takes about five minutes, once.",
-    visual: <ProfileMock />,
+    visual: (persona) => <ProfileMock persona={persona} />,
   },
   {
     title: "See which jobs are worth it",
     text: "Every fresh job is checked against your profile and marked strong, possible or unlikely, with the exact reasons. No more discovering a deal-breaker after you applied.",
-    visual: <MatchesMock />,
+    visual: () => <MatchesMock />,
   },
   {
     title: "Get the email written for you",
     text: "One click writes a short, tailored application for that job, using only what is true about you. If something is unclear, like visa sponsorship, it asks politely. Edit anything you like.",
-    visual: <EmailMock />,
+    visual: (persona) => <EmailMock persona={persona} />,
   },
   {
     title: "Send it, and keep track",
     text: "Approve it and it goes out from your own Gmail with your CV attached. It lands in your Applied list, where you follow it to interview and offer.",
-    visual: <SentMock />,
+    visual: (persona) => <SentMock persona={persona} />,
   },
 ];
 
@@ -62,12 +62,38 @@ export default function Home() {
   // undefined = checking, false = visitor, true = signed in
   const [signedIn, setSignedIn] = useState(undefined);
   const [stats, setStats] = useState(null);
+  // Visitors see the sample persona; signed-in users see their own name, email and CV.
+  const [persona, setPersona] = useState(SAMPLE_PERSONA);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSignedIn(Boolean(data.session)));
+    const loadPersona = async (session) => {
+      const user = session?.user;
+      if (!user) {
+        setPersona(SAMPLE_PERSONA);
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("candidate_profiles")
+        .select("preferred_name, cv_filename")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      const name = profile?.preferred_name || user.user_metadata?.full_name || user.email?.split("@")[0] || "You";
+      setPersona({
+        name,
+        email: user.email || SAMPLE_PERSONA.email,
+        cv: profile?.cv_filename || `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-cv.pdf`,
+      });
+    };
+    supabase.auth.getSession().then(({ data }) => {
+      setSignedIn(Boolean(data.session));
+      loadPersona(data.session);
+    });
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => setSignedIn(Boolean(session)));
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSignedIn(Boolean(session));
+      loadPersona(session);
+    });
     supabase.rpc("preview_countries").then(({ data }) => {
       if (data?.length) setStats({ jobs: data.reduce((sum, c) => sum + Number(c.jobs || 0), 0), countries: data.length });
     });
@@ -121,7 +147,7 @@ export default function Home() {
             </a>
           </div>
           <div className="mx-auto w-full max-w-md animate-[fadeUp_0.8s_ease-out] lg:max-w-none">
-            <HeroDemo />
+            <HeroDemo persona={persona} />
           </div>
         </div>
       </section>
@@ -161,7 +187,7 @@ export default function Home() {
                   <h3 className="mt-4 text-2xl font-bold">{step.title}</h3>
                   <p className="mt-3 text-zinc-400 leading-relaxed">{step.text}</p>
                 </div>
-                <div className={`mx-auto w-full max-w-md ${index % 2 ? "lg:order-1" : ""}`}>{step.visual}</div>
+                <div className={`mx-auto w-full max-w-md ${index % 2 ? "lg:order-1" : ""}`}>{step.visual(persona)}</div>
               </div>
             ))}
           </div>

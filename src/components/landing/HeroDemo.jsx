@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { EmailMock, MatchesMock, SAMPLE_EMAIL, SearchMock, SentMock } from "./Mockups";
+import { EmailMock, MatchesMock, SAMPLE_PERSONA, SearchMock, SentMock, sampleEmail } from "./Mockups";
 
 const SCENES = [
   { label: "Finds jobs", ms: 3200 },
@@ -11,7 +11,8 @@ const SCENES = [
 ];
 
 // A short looping "video" of JobPilot at work, built from the real screens' look.
-export default function HeroDemo() {
+export default function HeroDemo({ persona = SAMPLE_PERSONA }) {
+  const SAMPLE_EMAIL = sampleEmail(persona);
   const [scene, setScene] = useState(0);
   const [typed, setTyped] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -38,7 +39,7 @@ export default function HeroDemo() {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [scene]);
+  }, [scene, SAMPLE_EMAIL.subject.length, SAMPLE_EMAIL.body.length]);
 
   const subjectLen = SAMPLE_EMAIL.subject.length;
 
@@ -54,11 +55,12 @@ export default function HeroDemo() {
             <MatchesMock key="matches" />,
             <EmailMock
               key="email"
+              persona={persona}
               subject={SAMPLE_EMAIL.subject.slice(0, typed)}
               body={SAMPLE_EMAIL.body.slice(0, Math.max(0, typed - subjectLen))}
               cursor
             />,
-            <SentMock key="sent" />,
+            <SentMock key="sent" persona={persona} />,
           ].map((content, i) => (
             <div
               key={i}
@@ -71,7 +73,7 @@ export default function HeroDemo() {
             </div>
           ))}
           <div aria-hidden className="invisible col-start-1 row-start-1">
-            <EmailMock />
+            <EmailMock persona={persona} />
           </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">

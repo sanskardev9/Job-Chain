@@ -1,6 +1,9 @@
 // Illustrations for the home page: small replicas of the real screens with sample data
-// (a made-up candidate), so visitors see what they will get instead of reading about it.
+// (the founder's name with a dummy email), so visitors see what they will get instead of reading about it.
 import { AlertCircle, CheckCircle2, FileText, Mail, Paperclip, Send, XCircle } from "lucide-react";
+
+// Who the demo is about: visitors see this sample, signed-in users see themselves.
+export const SAMPLE_PERSONA = { name: "Sanskar Singh", email: "sanskar@test.com", cv: "sanskar-cv.pdf" };
 
 export function Frame({ children, className = "" }) {
   return (
@@ -24,10 +27,10 @@ const Chip = ({ children, tone = "zinc" }) => {
   return <span className={`rounded-full border px-2.5 py-1 text-xs ${tones[tone]}`}>{children}</span>;
 };
 
-export function ProfileMock() {
+export function ProfileMock({ persona = SAMPLE_PERSONA }) {
   return (
     <Frame>
-      <p className="text-sm font-semibold text-white">Alex Rivera · Frontend Developer</p>
+      <p className="text-sm font-semibold text-white">{persona.name} · Frontend Developer</p>
       <p className="text-xs text-zinc-500">2.5 years experience · based in India · needs visa sponsorship</p>
       <p className="mt-4 text-xs text-zinc-500">Skills</p>
       <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -44,7 +47,7 @@ export function ProfileMock() {
       </div>
       <div className="mt-4 flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5">
         <FileText size={18} className="text-red-300" />
-        <span className="text-sm text-zinc-200">Alex_Rivera_CV.pdf</span>
+        <span className="min-w-0 truncate text-sm text-zinc-200">{persona.cv}</span>
         <span className="ml-auto text-xs text-emerald-300">Uploaded</span>
       </div>
     </Frame>
@@ -102,16 +105,20 @@ export function MatchesMock() {
   );
 }
 
-export const SAMPLE_EMAIL = {
+export const sampleEmail = (persona = SAMPLE_PERSONA) => ({
   subject: "Application: Frontend Developer (React) – Ref. NW-2381",
   body:
     "Dear Hiring Team,\n\nI am applying for the Frontend Developer (React) position at Northwind Labs.\n\n" +
     "I have 2.5 years of professional frontend development experience. My skills include React, TypeScript, " +
     "Next.js and Tailwind CSS.\n\nCould you please confirm whether visa sponsorship is available for this position?\n\n" +
-    "Please find my CV attached.\n\nKind regards,\nAlex Rivera",
-};
+    `Please find my CV attached.\n\nKind regards,\n${persona.name}`,
+});
+export const SAMPLE_EMAIL = sampleEmail();
 
-export function EmailMock({ subject = SAMPLE_EMAIL.subject, body = SAMPLE_EMAIL.body, cursor = false }) {
+export function EmailMock({ persona = SAMPLE_PERSONA, subject, body, cursor = false }) {
+  const sample = sampleEmail(persona);
+  subject = subject ?? sample.subject;
+  body = body ?? sample.body;
   return (
     <Frame>
       <p className="text-xs text-zinc-500">
@@ -124,20 +131,20 @@ export function EmailMock({ subject = SAMPLE_EMAIL.subject, body = SAMPLE_EMAIL.
         {cursor ? <span className="ml-px inline-block h-3 w-1.5 animate-pulse bg-purple-400 align-middle" /> : null}
       </div>
       <div className="mt-2 flex items-center gap-2 text-xs text-zinc-400">
-        <Paperclip size={14} /> Alex_Rivera_CV.pdf
+        <Paperclip size={14} /> {persona.cv}
       </div>
     </Frame>
   );
 }
 
-export function SentMock() {
+export function SentMock({ persona = SAMPLE_PERSONA }) {
   return (
     <Frame>
       <div className="flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
         <Send size={18} className="text-emerald-300" />
         <div>
-          <p className="text-sm font-semibold text-emerald-200">Sent from alex.rivera@gmail.com</p>
-          <p className="text-xs text-emerald-300/80">With Alex_Rivera_CV.pdf · Frontend Developer (React)</p>
+          <p className="truncate text-sm font-semibold text-emerald-200">Sent from {persona.email}</p>
+          <p className="truncate text-xs text-emerald-300/80">With {persona.cv} · Frontend Developer (React)</p>
         </div>
       </div>
       <p className="mt-4 text-xs text-zinc-500">Applied</p>
