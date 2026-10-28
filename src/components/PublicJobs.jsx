@@ -56,7 +56,7 @@ export default function PublicJobs() {
         </p>
       </div>
 
-      <div className="max-w-5xl mx-auto py-6 space-y-6">
+      <div className="max-w-7xl mx-auto py-6 space-y-6">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -158,7 +158,7 @@ export default function PublicJobs() {
             No fresh jobs match this search. Try other words, or sign up and JobPilot will search the job portals for you.
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {jobs.map((job) => {
               const dates = jobDates(job.posted_at, job.deadline);
               return (

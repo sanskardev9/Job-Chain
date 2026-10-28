@@ -143,7 +143,7 @@ export default function BookmarksPage() {
         </p>
       </div>
 
-      <div className="max-w-5xl mx-auto py-4">
+      <div className="max-w-7xl mx-auto py-4">
         {rows.length === 0 ? (
           <div className="mt-6 rounded-2xl text-center border border-zinc-800 bg-zinc-900 p-8 text-zinc-300">
             <p className="text-lg font-semibold text-white">No saved jobs</p>
@@ -158,7 +158,7 @@ export default function BookmarksPage() {
             </Link>
           </div>
         ) : (
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {rows.map((row) => {
               const job = row.discovered_jobs || {};
               const company = HIDDEN_EMPLOYER.test((row.company || "").trim()) ? "Employer not named" : row.company;

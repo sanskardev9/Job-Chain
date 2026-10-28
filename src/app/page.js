@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import HeroDemo from "../components/landing/HeroDemo";
+import JobFlow from "../components/landing/JobFlow";
 import Reveal, { CountUp } from "../components/Reveal";
 import IntroScreen from "../components/IntroScreen";
 import EuFlag from "../components/EuFlag";
@@ -74,7 +75,7 @@ const BOLT_POINTS = Array.from({ length: 41 }, (_, i) => {
 function Lightning({ progress }) {
   return (
     <svg aria-hidden viewBox="0 0 24 100" preserveAspectRatio="none"
-      className="bolt-flicker absolute left-1/2 top-0 hidden h-full w-6 -translate-x-1/2 animate-[boltFlicker_1.6s_steps(1,end)_infinite] overflow-visible lg:block"
+      className="bolt-flicker absolute left-4 top-0 h-full w-5 -translate-x-1/2 animate-[boltFlicker_1.6s_steps(1,end)_infinite] overflow-visible lg:left-1/2 lg:w-6"
       style={{ clipPath: `inset(0 -30px ${(1 - progress) * 100}% -30px)` }}>
       <defs>
         <filter id="boltGlow" x="-300%" y="-5%" width="700%" height="110%">
@@ -241,9 +242,10 @@ export default function Home() {
           style={{ transform: `scaleX(${pageProgress})` }} />
       </div>
       {/* Hero: what it is, shown working. No buttons here on purpose. */}
-      <section className="relative px-4 sm:px-6 pt-12 pb-16 sm:pt-20">
+      {/* Hero fills the screen below the navbar (svh: correct on phones with browser bars). */}
+      <section className="relative flex min-h-[calc(100svh-4rem)] items-center px-4 sm:px-6 py-12">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-[32rem] bg-[radial-gradient(ellipse_at_top,rgba(147,51,234,0.18),transparent_60%)]" />
-        <div className="relative mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-2">
+        <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-2">
           <div className="animate-[fadeUp_0.6s_ease-out] text-center lg:text-left">
             <p className="inline-flex items-center gap-2 rounded-full border border-purple-500/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-200">
               <EuFlag /> Live vacancies from EURES, the EU&apos;s official job portal
@@ -292,7 +294,7 @@ export default function Home() {
       </section>
 
       {/* Each problem of applying abroad, and how JobPilot solves it. */}
-      <section className="px-4 sm:px-6 py-16">
+      <section className="px-4 sm:px-6 py-12">
         <div className="mx-auto max-w-5xl">
           {/* 1. The problem, on its own. */}
           <p className="text-center text-xs font-bold uppercase tracking-wider text-zinc-500">The problem</p>
@@ -313,7 +315,7 @@ export default function Home() {
           </ul>
 
           {/* 2. What JobChain and JobPilot are, before what they do. */}
-          <p className="mt-20 text-center text-xs font-bold uppercase tracking-wider text-purple-300">The solution</p>
+          <p className="mt-14 text-center text-xs font-bold uppercase tracking-wider text-purple-300">The solution</p>
           <h2 className="mt-2 text-center text-2xl sm:text-3xl font-bold">Meet JobChain and JobPilot</h2>
           <div className="mx-auto mt-8 grid max-w-4xl grid-cols-1 gap-4 md:grid-cols-2">
             <Reveal from="left" className="spotlight rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 transition-[transform,border-color,box-shadow] duration-300 hover:-translate-y-1 hover:border-purple-500/50 hover:shadow-lg hover:shadow-purple-900/20">
@@ -338,8 +340,19 @@ export default function Home() {
             </Reveal>
           </div>
 
+          {/* JobPilot at work: postings flow in, checked jobs come out. */}
+          <div className="mt-14">
+            <Reveal className="text-center">
+              <h2 className="text-2xl sm:text-3xl font-bold">Every job, checked for you</h2>
+              <p className="mx-auto mt-2 max-w-xl text-zinc-400">
+                New postings from across Europe flow in. JobPilot reads each one and keeps only the jobs that fit you.
+              </p>
+            </Reveal>
+            <Reveal from="scale" className="mt-6"><JobFlow /></Reveal>
+          </div>
+
           {/* 3. The JobPilot advantage: the old way next to the JobPilot way, one line each. */}
-          <div className="mt-20 rounded-3xl border border-zinc-800 bg-zinc-950 px-4 py-10 sm:px-8">
+          <div className="mt-14 rounded-3xl border border-zinc-800 bg-zinc-950 px-4 py-10 sm:px-8">
             <div className="text-center">
               <span className="inline-block rounded-full bg-purple-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-purple-300">
                 The JobPilot advantage
@@ -373,7 +386,7 @@ export default function Home() {
       </section>
 
       {/* Bulk apply, part 1: the benefit, with the batch shown going out. */}
-      <section className="px-4 sm:px-6 py-16">
+      <section className="px-4 sm:px-6 py-12">
         <div className="spotlight mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-600/15 via-zinc-900 to-zinc-950 p-6 sm:p-10 lg:grid-cols-2 lg:gap-14">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full border border-purple-500/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-purple-200">
@@ -433,7 +446,7 @@ export default function Home() {
       </section>
 
       {/* How it works: the product screen by screen, joined by a timeline. */}
-      <section id="how-it-works" className="scroll-mt-20 px-4 sm:px-6 py-16">
+      <section id="how-it-works" className="scroll-mt-20 px-4 sm:px-6 py-12">
         <div className="mx-auto max-w-6xl">
           <div className="text-center">
             <span className="inline-block rounded-full bg-purple-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-purple-300">
@@ -444,21 +457,21 @@ export default function Home() {
               Here&apos;s what you&apos;ll see in JobChain, from your first five minutes to your first interview.
             </p>
           </div>
-          <ol ref={timelineRef} className="relative mt-14 space-y-16 lg:space-y-24">
+          <ol ref={timelineRef} className="relative mt-10 space-y-12 lg:space-y-16">
             {/* Timeline behind the step numbers (desktop): a grey track that fills purple as you scroll. */}
-            <span aria-hidden className="absolute bottom-0 left-1/2 hidden w-px -translate-x-1/2 bg-gradient-to-b from-zinc-800 to-transparent lg:block"
+            <span aria-hidden className="absolute bottom-0 left-4 w-px -translate-x-1/2 bg-gradient-to-b from-zinc-800 to-transparent lg:left-1/2"
               style={{ top: `${timeline.progress * 100}%` }} />
             {/* The bolt: a jagged line revealed down to the scroll position, with a spark at its tip. */}
             <Lightning progress={timeline.progress} />
             {timeline.progress > 0 && timeline.progress < 1 ? (
               <span aria-hidden
-                className="spark-pulse absolute left-1/2 hidden h-3 w-3 animate-[sparkPulse_0.5s_ease-in-out_infinite] rounded-full bg-white shadow-[0_0_10px_4px_rgba(232,121,249,0.9),0_0_30px_10px_rgba(168,85,247,0.6)] lg:block"
+                className="spark-pulse absolute left-4 h-3 w-3 animate-[sparkPulse_0.5s_ease-in-out_infinite] lg:left-1/2 rounded-full bg-white shadow-[0_0_10px_4px_rgba(232,121,249,0.9),0_0_30px_10px_rgba(168,85,247,0.6)] lg:block"
                 style={{ top: `${timeline.progress * 100}%` }} />
             ) : null}
             {STEPS.map((step, index) => (
-              <li key={step.title} className="relative grid grid-cols-1 items-center gap-8 lg:grid-cols-2 lg:gap-24">
+              <li key={step.title} className="relative grid grid-cols-1 items-center gap-8 pl-12 lg:grid-cols-2 lg:gap-24 lg:pl-0">
                 <span aria-hidden data-step-dot
-                  className={`absolute left-1/2 top-1/2 hidden h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border font-bold transition-all duration-500 lg:flex ${
+                  className={`absolute left-4 top-3 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border text-sm font-bold transition-all duration-500 lg:left-1/2 lg:top-1/2 lg:h-10 lg:w-10 lg:-translate-y-1/2 lg:text-base ${
                     index < timeline.reached
                       ? "zap-flash scale-110 animate-[zapFlash_0.7s_ease-out] border-fuchsia-300 bg-purple-600 text-white shadow-[0_0_24px_rgba(232,121,249,0.7)]"
                       : "border-zinc-700 bg-zinc-950 text-zinc-500"
@@ -467,9 +480,6 @@ export default function Home() {
                 </span>
                 <Reveal from={index % 2 ? "right" : "left"} className={index % 2 ? "lg:order-2" : ""}>
                   <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-purple-300">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-purple-500/20 text-[11px] text-purple-100 lg:hidden">
-                      {index + 1}
-                    </span>
                     {step.tag}
                   </p>
                   <h3 className="mt-3 text-2xl font-bold">{step.title}</h3>
@@ -493,7 +503,7 @@ export default function Home() {
       </section>
 
       {/* What it will never do. */}
-      <section className="px-4 sm:px-6 py-16">
+      <section className="px-4 sm:px-6 py-12">
         <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-2xl sm:text-3xl font-bold">Your name, your rules</h2>
           <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -534,10 +544,10 @@ export default function Home() {
                 <ArrowRight size={18} className="transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
               <Link
-                href={signedIn ? "/jobpilot?tab=drafts" : "/jobs"}
+                href={signedIn ? "/jobpilot" : "/jobs"}
                 className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-zinc-600 px-6 py-3 font-semibold transition duration-200 hover:border-purple-500 hover:text-purple-200 sm:w-auto"
               >
-                {signedIn ? <><Mail size={17} /> Review my drafts</> : <><Search size={17} /> Browse today&apos;s jobs</>}
+                {signedIn ? <><Zap size={17} /> Explore JobPilot</> : <><Search size={17} /> Browse today&apos;s jobs</>}
               </Link>
             </div>
             {signedIn === false ? (

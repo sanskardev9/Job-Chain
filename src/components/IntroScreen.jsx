@@ -23,9 +23,15 @@ const SCHEDULE = (() => {
 })();
 
 // When the intro started in this page load. A module variable: it survives React re-running effects
-// and moving between pages, and resets on every refresh, so the intro plays once per page load.
+// and moving between pages inside the site.
 let startedAt = null;
 const finished = () => startedAt !== null && performance.now() - startedAt >= SCHEDULE.done;
+// Play on every load or refresh of Home. Not when the browser restores a tab it had unloaded to save
+// memory (coming back to the tab later), and not on back/forward.
+function shouldPlay() {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || document.wasDiscarded) return false;
+  return performance.getEntriesByType?.("navigation")?.[0]?.type !== "back_forward";
+}
 
 // A short greeting screen on every full load of Home. It slides up with a curved edge to reveal the
 // page. Skipped for people who prefer reduced motion.
@@ -34,11 +40,18 @@ export default function IntroScreen() {
   const [phase, setPhase] = useState(() => (typeof window !== "undefined" && finished() ? "done" : "words"));
 
   useEffect(() => {
-    if (finished() || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (finished()) {
       setPhase("done");
       return undefined;
     }
-    if (startedAt === null) startedAt = performance.now();
+    if (startedAt === null) {
+      if (!shouldPlay()) {
+        startedAt = performance.now() - SCHEDULE.done; // counts as already shown for this page load
+        setPhase("done");
+        return undefined;
+      }
+      startedAt = performance.now();
+    }
     const elapsed = performance.now() - startedAt;
     const later = (at, fn) => setTimeout(fn, Math.max(at - elapsed, 0));
 

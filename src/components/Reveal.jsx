@@ -32,7 +32,8 @@ export default function Reveal({ children, delay = 0, from = "up", className = "
   return (
     <Tag
       ref={ref}
-      style={{ transitionDelay: shown ? `${delay}ms` : "0ms" }}
+      data-shown={shown ? "true" : "false"}
+      style={{ transitionDelay: shown ? `${delay}ms` : "0ms", "--reveal-delay": `${delay}ms` }}
       className={`transition-all duration-700 ease-out motion-reduce:transition-none ${
         shown ? "translate-x-0 translate-y-0 scale-100 opacity-100" : `opacity-0 ${hidden}`
       } ${className}`}

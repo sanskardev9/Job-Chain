@@ -7,6 +7,7 @@ import Navbar from "./Navbar";
 import Footer from "./Footer";
 import Loader from "./Loader";
 import RunTray from "./RunTray";
+import BackToTop from "./BackToTop";
 import { getSetupStatus } from "../lib/setup";
 
 // Pages only for signed-in users. Home, Jobs (view-only preview) and Login are public.
@@ -115,6 +116,7 @@ export default function LayoutShell({ children }) {
       </main>
       <Footer />
       {session?.user ? <RunTray userId={session.user.id} /> : null}
+      <BackToTop />
     </div>
   );
 }

@@ -1,7 +1,35 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, CloudDownload, FileSearch, Loader2, Mail, Radar, Target } from "lucide-react";
+import { Check, Coffee, CloudDownload, FileSearch, Loader2, Mail, Radar, Target } from "lucide-react";
+
+// JobPilot talking while it works: what it's doing, in turn, under "Sit back".
+const SIT_BACK_LINES = [
+  "Reading every job posting in full, so you don't have to.",
+  "Checking languages, visa needs and experience for each one.",
+  "Skipping the jobs that don't fit you.",
+  "Writing a tailored email for every good match.",
+  "Grab a coffee. Your matches will be waiting here.",
+];
+
+function SitBack() {
+  const [line, setLine] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setLine((i) => (i + 1) % SIT_BACK_LINES.length), 3500);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div className="relative mt-5 flex items-start gap-3 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-3">
+      <Coffee size={20} className="mt-0.5 shrink-0 text-purple-300" />
+      <div className="min-w-0">
+        <p className="font-semibold text-white">Sit back, I&apos;ll handle it from here.</p>
+        <p key={line} className="mt-0.5 animate-[fadeUp_0.5s_ease-out] text-sm text-purple-200/80">
+          {SIT_BACK_LINES[line]}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 const STAGES = [
   { id: "wake", label: "Starting JobPilot" },
@@ -23,23 +51,12 @@ const EMAIL = /[\w.+-]+@[\w-]+(\.[\w-]+)+/g;
 const message = (event) =>
   (event.details?.message || "").replace(/contact email \S+/g, "email found").replace(/→\s*\S+@\S+/g, "").replace(EMAIL, "email");
 
-function useElapsed(since) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const seconds = since ? Math.max(0, Math.floor((now - new Date(since).getTime()) / 1000)) : 0;
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-}
-
 /**
  * Live view of a JobPilot search: stages, progress across the user's job titles, running totals
  * and a ticker of what is being read right now. events: pipeline_events rows of this run.
  */
 export default function SearchProgress({ status, step, events = [], startedAt, compact = false }) {
   const stage = stageOf(status, step, events);
-  const elapsed = useElapsed(startedAt);
 
   const keyword = step?.match(/^EURES: “(.+)” \((\d+)\/(\d+)\)/);
   const titleProgress = keyword ? Number(keyword[2]) / Number(keyword[3]) : stage >= 2 ? 1 : 0;
@@ -77,7 +94,6 @@ export default function SearchProgress({ status, step, events = [], startedAt, c
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3">
             <p className="font-semibold text-white">JobPilot is searching Europe for you</p>
-            <span className="font-mono text-xs tabular-nums text-zinc-400">{elapsed}</span>
           </div>
           <p className="mt-0.5 truncate text-sm text-purple-200">
             {stage === 0 ? "Waking up the search engine (about a minute the first time)…" : step}
@@ -146,10 +162,7 @@ export default function SearchProgress({ status, step, events = [], startedAt, c
         </ul>
       ) : null}
 
-      <p className="relative mt-4 text-xs text-zinc-500">
-        Every vacancy is read in full and checked against your skills, languages, experience and visa needs, so this
-        takes a few minutes. You can leave this page; JobPilot keeps working and your matches appear here.
-      </p>
+      <SitBack />
     </div>
   );
 }
@@ -159,7 +172,6 @@ export default function SearchProgress({ status, step, events = [], startedAt, c
  * email (quick apply). events: pipeline_events rows of the lookup run.
  */
 export function LookupProgress({ query, status, events = [], startedAt, target = 25 }) {
-  const elapsed = useElapsed(startedAt);
   const read = events.filter((e) => e.event_type === "read");
   const withEmail = read.filter((e) => /contact email \S+@/.test(e.details?.message || "")).length;
   const latest = [...events].reverse().find((e) => ["open", "read"].includes(e.event_type));
@@ -178,7 +190,6 @@ export function LookupProgress({ query, status, events = [], startedAt, target =
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-3">
             <p className="truncate text-sm font-semibold text-white">JobPilot is reading the job postings for “{query}”</p>
-            <span className="shrink-0 font-mono text-xs tabular-nums text-zinc-400">{elapsed}</span>
           </div>
           <p className="mt-0.5 text-xs text-zinc-400">
             {waking

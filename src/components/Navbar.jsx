@@ -137,7 +137,7 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 h-16 w-full flex items-center justify-between gap-3 bg-zinc-950 px-4 shadow-md border-b border-zinc-800 text-white">
+    <header className="sticky top-0 z-50 h-16 w-full flex items-center justify-between gap-3 bg-zinc-950 px-4 border-b border-zinc-800/80 text-white sm:px-6">
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <Image
           src="/chain.png"
@@ -164,20 +164,22 @@ export default function Navbar() {
           </button>
 
           <nav className="hidden lg:block lg:w-auto">
-            <ul className="flex items-center justify-end gap-5 text-base xl:text-lg font-semibold tracking-wide whitespace-nowrap">
+            <ul className="flex items-center justify-end gap-1 text-[15px] font-medium whitespace-nowrap">
               {LINKS.map((link) => {
                 const count = link.count === "bookmarks" ? bookmarkCount : link.count === "applied" ? appliedCount : 0;
                 return (
                   <li key={link.href}>
                     <Link
                       href={link.href}
-                      className={`relative inline-flex hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200 ${
-                        pathname === link.href ? "text-purple-300" : ""
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors duration-200 ${
+                        pathname === link.href
+                          ? "bg-purple-500/15 text-purple-200"
+                          : "text-zinc-300 hover:bg-zinc-800/70 hover:text-white"
                       }`}
                     >
                       {link.label}
                       {count > 0 ? (
-                        <span className="absolute -top-2 -right-4 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                        <span className="min-w-5 rounded-full bg-purple-500/25 px-1.5 text-center text-[11px] font-semibold leading-5 text-purple-100">
                           {count}
                         </span>
                       ) : null}
@@ -186,11 +188,11 @@ export default function Navbar() {
                 );
               })}
               <li>
-                <div className="flex items-center gap-2 whitespace-nowrap">
-                  <span className="text-zinc-300 text-sm sm:text-base font-medium">
-                    <span className="hidden lg:inline mr-2">| </span>
-                    {displayName}
+                <div className="ml-3 flex items-center gap-2 whitespace-nowrap border-l border-zinc-800 pl-4">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-600 text-sm font-bold text-white">
+                    {(displayName || "?").charAt(0).toUpperCase()}
                   </span>
+                  <span className="text-sm font-medium text-zinc-300">{displayName}</span>
                   <button
                     type="button"
                     onClick={requestSignOut}

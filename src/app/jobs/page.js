@@ -159,6 +159,8 @@ export default function JobsPage() {
       setPicked(profile?.target_countries || []);
       setFilterReady(true);
       loadDrafts(currentUser.id);
+      // Coming back while a search runs: show its progress right away.
+      findActiveSearch(currentUser.id).then((run) => run && followRun(run));
       const params = new URLSearchParams(window.location.search);
       if (["forYou", "latest"].includes(params.get("tab"))) setTab(params.get("tab"));
       const sharedUrl = params.get(SHARE_PARAM);
@@ -340,8 +342,25 @@ export default function JobsPage() {
     };
   }, [lookup, runSearch, submitted, quickOnly]);
 
+  // A search already running for this user (started here, in JobPilot, or before leaving the page).
+  const findActiveSearch = async (userId) => {
+    const { data } = await supabase.from("pipeline_runs")
+      .select("id, status, current_step, counts, requested_at, started_at")
+      .eq("user_id", userId).eq("kind", "search").in("status", LOOKUP_ACTIVE)
+      .order("requested_at", { ascending: false }).limit(1);
+    return data?.[0] || null;
+  };
+  const followRun = (run) =>
+    setRefresh({ runId: run.id, status: run.status, step: run.current_step, counts: run.counts,
+      startedAt: run.started_at, requestedAt: run.requested_at, events: [] });
+
   const startRefresh = async () => {
     wakeWorker();
+    const active = await findActiveSearch(user.id);
+    if (active) {
+      followRun(active);
+      return;
+    }
     setRefresh({ status: "starting" });
     const { data, error } = await supabase
       .from("pipeline_runs")
@@ -349,10 +368,10 @@ export default function JobsPage() {
       .select("id, status")
       .single();
     if (error) {
-      setRefresh({
-        status: "failed",
-        error: error.code === "23505" ? "JobPilot is already running for you. Check its progress in JobPilot." : error.message,
-      });
+      // Started elsewhere a moment ago: show that one instead of an error.
+      const running = error.code === "23505" ? await findActiveSearch(user.id) : null;
+      if (running) followRun(running);
+      else setRefresh({ status: "failed", error: error.message });
       return;
     }
     setRefresh({ runId: data.id, status: data.status, requestedAt: new Date().toISOString(), events: [] });
@@ -493,7 +512,7 @@ export default function JobsPage() {
         </p>
       </div>
 
-      <div className="max-w-5xl mx-auto py-4 space-y-8">
+      <div className="max-w-7xl mx-auto py-4 space-y-8">
         <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row">
           <div className="relative min-w-0 flex-1">
             <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
@@ -615,10 +634,12 @@ export default function JobsPage() {
           </div>
         )}
 
+        {/* A running or just-finished refresh stays visible on both tabs. */}
+        {refresh ? <div className="-mt-4"><RefreshStatus refresh={refresh} /></div> : null}
+
         {view === "forYou" ? (
           <section role="tabpanel" className="-mt-4">
             <p className="text-sm text-zinc-500">Strong and possible matches for your profile, best first.</p>
-            {refresh ? <RefreshStatus refresh={refresh} /> : null}
             {forYou.length === 0 && quickOnly ? (
               <div className="mt-4 rounded-2xl border border-purple-500/30 bg-purple-500/10 p-5 text-center text-sm text-purple-100">
                 {appliedQuick
@@ -648,7 +669,7 @@ export default function JobsPage() {
                 .
               </div>
             ) : (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">{forYou.map(card)}</div>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{forYou.map(card)}</div>
             )}
           </section>
         ) : null}
@@ -727,7 +748,7 @@ export default function JobsPage() {
               )}
             </div>
           ) : (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">{shownResults.map(card)}</div>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{shownResults.map(card)}</div>
           )}
 
           <p className="mt-4 text-center text-xs text-zinc-500">

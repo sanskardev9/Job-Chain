@@ -223,7 +223,9 @@ export function BulkSendMock({ persona = SAMPLE_PERSONA, sent = BATCH_TOTAL }) {
           <Send size={12} className={done ? "text-emerald-300" : "text-purple-300"} />
           <span className="min-w-0 truncate">{done
             ? `${BATCH_TOTAL} applications sent from ${persona.email}, each with ${persona.cv}`
-            : `Sending ${Math.min(sent + 1, BATCH_TOTAL)} of ${BATCH_TOTAL} from ${persona.email}…`}</span>
+            : sent
+              ? `Sending ${Math.min(sent + 1, BATCH_TOTAL)} of ${BATCH_TOTAL} from ${persona.email}…`
+              : `${BATCH_TOTAL} applications ready to send from ${persona.email}`}</span>
         </p>
       </div>
     </Frame>
