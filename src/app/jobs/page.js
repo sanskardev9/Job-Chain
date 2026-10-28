@@ -155,6 +155,7 @@ export default function JobsPage() {
         return;
       }
       setLookup({ q, runId: data.id, status: data.status });
+      window.dispatchEvent(new CustomEvent("jobchain:run-started"));
     },
     [user]
   );

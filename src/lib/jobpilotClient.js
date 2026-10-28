@@ -23,8 +23,9 @@ export async function requestDraft(userId, discoveredJobId, recipient) {
     .select("id, status")
     .single();
   if (error) {
-    return { error: error.code === "23505" ? "JobPilot is busy with another run. Try again when it finishes." : error.message };
+    return { error: error.code === "23505" ? "This application is already being written." : error.message };
   }
+  window.dispatchEvent(new CustomEvent("jobchain:run-started"));
   return { run: data };
 }
 

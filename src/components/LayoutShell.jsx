@@ -6,6 +6,7 @@ import { supabase } from "../lib/supabaseClient";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import Loader from "./Loader";
+import RunTray from "./RunTray";
 
 // Pages only for signed-in users. Home, Jobs (view-only preview) and Login are public.
 const PRIVATE_PREFIXES = ["/bookmarks", "/applied", "/jobpilot", "/profile", "/drafts", "/gmail"];
@@ -66,6 +67,7 @@ export default function LayoutShell({ children }) {
         )}
       </main>
       <Footer />
+      {session?.user ? <RunTray userId={session.user.id} /> : null}
     </div>
   );
 }

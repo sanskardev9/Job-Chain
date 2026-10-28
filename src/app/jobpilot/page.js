@@ -82,7 +82,8 @@ export default function JobPilotPage() {
   const lastEventId = useRef(0);
   const shownRunId = useRef(null);
 
-  const latestRun = runs[0] || null;
+  // Applications being written show in the corner tray; this panel follows searches and sends.
+  const latestRun = runs.find((run) => run.kind !== "draft") || null;
   const running = latestRun && ACTIVE.includes(latestRun.status);
 
   const loadSetup = useCallback(async (currentUser) => {

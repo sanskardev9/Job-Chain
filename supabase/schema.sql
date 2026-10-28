@@ -728,3 +728,11 @@ as $$
 $$;
 revoke all on function public.search_jobs(text, text, int, int, boolean) from public, anon;
 grant execute on function public.search_jobs(text, text, int, int, boolean) to authenticated;
+
+-- One active search/send/lookup per user, but any number of "write this application" runs
+-- (one per job, so double-clicks do not write two drafts).
+drop index if exists public.pipeline_runs_one_active;
+create unique index pipeline_runs_one_active
+  on public.pipeline_runs (user_id) where status in ('queued', 'running') and kind <> 'draft';
+create unique index if not exists pipeline_runs_one_draft_per_job
+  on public.pipeline_runs (discovered_job_id) where status in ('queued', 'running') and kind = 'draft';
