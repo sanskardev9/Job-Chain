@@ -101,6 +101,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
     const values = draft.status === "approved" ? null : { subject: draft.subject, body: draft.body, status: "approved" };
     if (values && !(await updateDraft(draft, values))) return;
     onSend?.();
+    window.dispatchEvent(new CustomEvent("jobchain:run-started"));
   };
 
   const toggleSelected = (id) =>

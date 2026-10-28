@@ -36,7 +36,7 @@ export default function RunTray({ userId }) {
     const since = new Date(Date.now() - RECENT_MS).toISOString();
     const { data } = await supabase
       .from("pipeline_runs")
-      .select("id, kind, status, error, query, requested_at, finished_at, discovered_jobs(title)")
+      .select("id, kind, status, error, query, requested_at, finished_at, discovered_jobs(title, application_drafts(status))")
       .eq("user_id", userId)
       .in("kind", ["draft", "lookup"])
       .gte("requested_at", since)
@@ -83,7 +83,16 @@ export default function RunTray({ userId }) {
     writeSeen(next);
   };
 
-  const ready = visible.filter((r) => r.kind === "draft" && r.status === "finished").length;
+  // A written draft may since have been sent or rejected: show where it is now.
+  const draftState = (run) => {
+    const states = (run.discovered_jobs?.application_drafts || []).map((d) => d.status);
+    if (states.includes("sent")) return "sent";
+    if (states.includes("sending") || states.includes("approved")) return "approved";
+    if (states.includes("draft")) return "draft";
+    if (states.includes("rejected")) return "rejected";
+    return "draft";
+  };
+  const ready = visible.filter((r) => r.kind === "draft" && r.status === "finished" && draftState(r) === "draft").length;
   const title = (run) =>
     run.kind === "lookup" ? `Searching for “${run.query}”` : run.discovered_jobs?.title || "Application";
 
@@ -105,7 +114,7 @@ export default function RunTray({ userId }) {
               ? `JobPilot is working on ${active.length} item${active.length === 1 ? "" : "s"}`
               : ready
                 ? `${ready} draft${ready === 1 ? "" : "s"} ready to review`
-                : "JobPilot activity"}
+                : "JobPilot activity: all done"}
           </span>
           <ChevronDown size={16} className={`text-zinc-400 transition ${open ? "" : "rotate-180"}`} />
         </button>
@@ -129,9 +138,17 @@ export default function RunTray({ userId }) {
                     <p className={`text-xs ${failed ? "text-red-300" : "text-zinc-500"}`}>
                       {done ? (
                         run.kind === "draft" ? (
-                          <Link href="/jobpilot?tab=drafts" className="font-semibold text-purple-300 hover:underline">
-                            Draft ready · Review &amp; send →
-                          </Link>
+                          draftState(run) === "sent" ? (
+                            <span className="text-emerald-300">Sent ✓</span>
+                          ) : draftState(run) === "approved" ? (
+                            <span className="text-blue-300">Approved, sending soon</span>
+                          ) : draftState(run) === "rejected" ? (
+                            "Draft rejected"
+                          ) : (
+                            <Link href="/jobpilot?tab=drafts" className="font-semibold text-purple-300 hover:underline">
+                              Draft ready · Review &amp; send →
+                            </Link>
+                          )
                         ) : (
                           "New jobs added to the list"
                         )
