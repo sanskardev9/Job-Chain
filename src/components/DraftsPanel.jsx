@@ -256,8 +256,13 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
                   </span>
                 </div>
 
+                {(job.blockers || []).length ? (
+                  <p className="mt-3 text-sm text-red-300">Why it may not fit: {job.blockers.join(" · ")}</p>
+                ) : null}
                 {(job.unknowns || []).length ? (
-                  <p className="mt-3 text-sm text-yellow-300/90">To check: {job.unknowns.join(" · ")}</p>
+                  <p className={`${(job.blockers || []).length ? "mt-1" : "mt-3"} text-sm text-yellow-300/90`}>
+                    To check: {job.unknowns.join(" · ")}
+                  </p>
                 ) : null}
                 {(job.required_skills || []).length ? (
                   <p className="mt-1 text-sm text-zinc-400">

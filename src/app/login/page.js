@@ -8,6 +8,7 @@ import { animate } from "animejs";
 import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 import { Eye, EyeOff } from "lucide-react";
+import EuFlag from "../../components/EuFlag";
 
 function LoginPageContent() {
   const [loading, setLoading] = useState(false);
@@ -144,17 +145,17 @@ function LoginPageContent() {
         >
           <div className="w-full text-center">
             <Link href="/" className="inline-flex flex-col items-center justify-center gap-4">
-              <Image src="/chain.png" alt="JobChain logo" width={74} height={82} priority />
+              <Image src="/chain.png" alt="JobChain logo" width={74} height={82} style={{ width: "auto", height: "auto" }} priority />
               <h1 className="text-6xl font-extrabold tracking-tight text-white">Job-Chain</h1>
             </Link>
-            <p className="mt-4 text-lg text-zinc-400">🇪🇺 Apply to jobs across Europe, one approved email at a time.</p>
+            <p className="mt-4 inline-flex items-center gap-2 text-lg text-zinc-400"><EuFlag className="h-4 w-6" /> Your next job, anywhere in Europe.</p>
           </div>
         </div>
 
         <div ref={formRef} className="flex items-center justify-center p-6 sm:p-12">
           <div className="w-full max-w-md text-center">
             <div className="mb-6 lg:hidden flex items-center justify-center gap-3">
-              <Image src="/chain.png" alt="JobChain logo" width={30} height={34} priority />
+              <Image src="/chain.png" alt="JobChain logo" width={30} height={34} style={{ width: "auto", height: "auto" }} priority />
               <h1 className="text-2xl font-extrabold tracking-wide">Job-Chain</h1>
             </div>
 

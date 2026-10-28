@@ -6,7 +6,8 @@ import { supabase } from "../lib/supabaseClient";
 import { EMAIL_RE, requestDraft, runState, wakeWorker } from "../lib/jobpilotClient";
 import { companyName, isHiddenEmployer } from "../lib/jobs";
 import { jobDates } from "../lib/dates";
-import { ExternalLink, Zap } from "lucide-react";
+import { Check, ExternalLink, Loader2, Share2, Zap } from "lucide-react";
+import { shareJob } from "../lib/share";
 import { BookmarkToggle, MoreMenu } from "./CardControls";
 import { LABEL_STYLES } from "./DraftsPanel";
 
@@ -22,12 +23,26 @@ const WRITING = ["starting", "queued", "running"];
  *        missing_skills?, nice_to_have_skills?, matched_skills? }
  * onChange({ type: "saved" | "unsaved" | "applied" | "dismissed", row?, discoveredId })
  */
-export default function JobCard({ job, userId, saved, applied, onChange, setupMissing }) {
+// draftStatus: this job's application draft, if any ("draft" | "approved" | "sending"): the card then
+// leads to the draft instead of offering to write another one.
+export default function JobCard({ job, userId, saved, applied, onChange, setupMissing, draftStatus }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [email, setEmail] = useState(null); // null = box closed
   const [write, setWrite] = useState(null); // { runId, status, error }
   const [setupNote, setSetupNote] = useState("");
+  const [shared, setShared] = useState(""); // "", "copied", "shared"
+  const drafted = ["draft", "approved", "sending"].includes(draftStatus) && !write;
+
+  const share = async () => {
+    const result = await shareJob(job);
+    if (result === "copied" || result === "shared") {
+      setShared(result);
+      setTimeout(() => setShared(""), 2200);
+    } else if (result === "failed") {
+      setError("Could not share this job. Copy the address from your browser instead.");
+    }
+  };
 
   useEffect(() => {
     if (!write?.runId || !WRITING.includes(write.status)) return undefined;
@@ -145,7 +160,7 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
 
   return (
     <div
-      className={`relative flex flex-col rounded-2xl border p-5 shadow-lg hover:shadow-purple-800/40 transition-shadow duration-300 ${
+      className={`relative flex animate-[fadeUp_0.45s_ease-out] flex-col rounded-2xl border p-5 shadow-lg transition-[transform,box-shadow] duration-300 hover:-translate-y-0.5 hover:shadow-purple-800/40 ${
         applied
           ? "border-emerald-500/30 bg-zinc-900/60"
           : job.has_email
@@ -153,7 +168,7 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
             : "border-zinc-800 bg-zinc-900"
       }`}
     >
-      {!applied ? <BookmarkToggle saved={Boolean(saved)} disabled={busy === "save"} onToggle={toggleSaved} /> : null}
+      {!applied && !job.live ? <BookmarkToggle saved={Boolean(saved)} disabled={busy === "save"} onToggle={toggleSaved} /> : null}
 
       <div className="flex items-start justify-between gap-3 pr-10">
         <h3 className="font-semibold break-words">{job.title}</h3>
@@ -200,7 +215,18 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
       {!job.required_skills?.length && job.snippet ? (
         <p className="mt-2 line-clamp-3 text-xs text-zinc-400">{job.snippet}</p>
       ) : null}
-      {applied ? null : job.has_email ? (
+      {job.live ? (
+        job.checking ? (
+          <p className="mt-3 inline-flex w-fit items-center gap-1.5 text-xs text-zinc-400">
+            <Loader2 size={12} className="animate-spin" /> Checking for quick apply…
+          </p>
+        ) : null
+      ) : applied ? null : drafted ? (
+        <p className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">
+          <Check size={13} />
+          {draftStatus === "draft" ? "Email written: review it, then send" : "Approved: being sent from your Gmail"}
+        </p>
+      ) : job.has_email ? (
         <p className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border border-purple-500/50 bg-purple-500/15 px-2.5 py-1 text-xs font-semibold text-purple-200">
           <Zap size={13} className="fill-current" /> Quick apply: JobPilot writes and sends it for you
         </p>
@@ -260,6 +286,12 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
           )}
         </p>
       ) : null}
+      {draftStatus === "interrupted" && !applied && !write ? (
+        <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          A previous send to this job was interrupted and may have gone out. Check your Gmail Sent folder before
+          applying again.
+        </p>
+      ) : null}
       {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
       {setupNote ? (
         <p className="mt-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-200">
@@ -271,7 +303,19 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
       ) : null}
 
       <div className="mt-auto pt-3 flex items-center gap-2">
-        {applied ? null : job.has_email ? (
+        {job.live ? (
+          <a href={job.source_url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition">
+            View on EURES <ExternalLink size={14} />
+          </a>
+        ) : applied ? null : drafted ? (
+          <Link
+            href="/jobpilot?tab=drafts"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-purple-500 transition"
+          >
+            {draftStatus === "draft" ? "Review & send →" : "See in Drafts →"}
+          </Link>
+        ) : job.has_email ? (
           <button
             type="button"
             onClick={writeApplication}
@@ -301,6 +345,20 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
             View vacancy
           </a>
         ) : null}
+        <div className="ml-auto flex items-center gap-2">
+        <button
+          type="button"
+          onClick={share}
+          aria-label="Share this job"
+          title={shared === "copied" ? "Link copied" : "Share this job with a friend"}
+          className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-sm transition ${
+            shared ? "border-emerald-500/50 text-emerald-300" : "border-zinc-700 text-zinc-300 hover:border-purple-500 hover:text-purple-300"
+          }`}
+        >
+          {shared ? <Check size={16} /> : <Share2 size={16} />}
+          {shared === "copied" ? <span className="text-xs">Link copied</span> : null}
+        </button>
+{!job.live ? (
         <MoreMenu
           disabled={Boolean(busy)}
           items={[
@@ -308,9 +366,12 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
               ? [{ label: "Found an email? Write application", onClick: writeApplication }]
               : []),
             ...(!applied ? [{ label: "Mark as applied", tone: "success", onClick: markApplied }] : []),
+            { label: "Share with a friend", onClick: share },
             { label: "Not interested", tone: "danger", onClick: dismiss },
           ]}
         />
+        ) : null}
+        </div>
       </div>
     </div>
   );

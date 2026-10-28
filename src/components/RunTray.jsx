@@ -36,7 +36,7 @@ export default function RunTray({ userId }) {
     const since = new Date(Date.now() - RECENT_MS).toISOString();
     const { data } = await supabase
       .from("pipeline_runs")
-      .select("id, kind, status, error, query, requested_at, finished_at, discovered_jobs(title, application_drafts(status))")
+      .select("id, kind, status, error, query, counts, discovered_job_id, requested_at, finished_at, discovered_jobs(title, application_drafts(status))")
       .eq("user_id", userId)
       .in("kind", ["draft", "lookup"])
       .gte("requested_at", since)
@@ -92,17 +92,21 @@ export default function RunTray({ userId }) {
     if (states.includes("rejected")) return "rejected";
     return "draft";
   };
-  const ready = visible.filter((r) => r.kind === "draft" && r.status === "finished" && draftState(r) === "draft").length;
+  // Jobs with a draft waiting for review (each job once, however many times it was clicked).
+  const ready = new Set(
+    visible.filter((r) => r.kind === "draft" && draftState(r) === "draft").map((r) => r.discovered_job_id)
+  ).size;
   const title = (run) =>
     run.kind === "lookup" ? `Searching for “${run.query}”` : run.discovered_jobs?.title || "Application";
 
   return (
     <div className="fixed bottom-4 right-4 z-[60] w-[min(22rem,calc(100vw-2rem))]">
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900/95 shadow-2xl shadow-black/50 backdrop-blur">
+        <div className="flex items-center">
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="flex w-full items-center gap-2 px-4 py-3 text-left"
+          className="flex min-w-0 flex-1 items-center gap-2 py-3 pl-4 pr-2 text-left"
         >
           {active.length ? (
             <Loader2 size={16} className="animate-spin text-purple-300" />
@@ -118,12 +122,44 @@ export default function RunTray({ userId }) {
           </span>
           <ChevronDown size={16} className={`text-zinc-400 transition ${open ? "" : "rotate-180"}`} />
         </button>
+        {visible.some((r) => !ACTIVE.includes(r.status)) ? (
+          <button
+            type="button"
+            onClick={dismissAll}
+            title="Remove finished items from this list"
+            className="mr-3 shrink-0 rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-400 hover:border-zinc-500 hover:text-zinc-200"
+          >
+            Clear
+          </button>
+        ) : null}
+        </div>
+
+        {/* One action for every ready draft: review them together and send in one go. */}
+        {ready ? (
+          <div className="px-3 pb-3">
+            <Link
+              href="/jobpilot?tab=drafts"
+              onClick={() => {
+                // The drafts are being opened: clear finished items, which closes the tray.
+                setOpen(false);
+                dismissAll();
+                window.dispatchEvent(new CustomEvent("jobchain:open-drafts"));
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-purple-500"
+            >
+              Review &amp; send {ready > 1 ? `all ${ready}` : "it"} →
+            </Link>
+          </div>
+        ) : null}
 
         {open ? (
           <div className="max-h-72 overflow-y-auto border-t border-zinc-800 px-2 py-2">
             {visible.map((run) => {
-              const done = run.status === "finished";
-              const failed = ["failed", "cancelled"].includes(run.status);
+              // A write attempt on a job that has a draft anyway (e.g. written by the last search) is done,
+              // not failed: show the draft's real state.
+              const hasDraft = run.kind === "draft" && Boolean(draftState(run));
+              const done = run.status === "finished" || hasDraft;
+              const failed = ["failed", "cancelled"].includes(run.status) && !hasDraft;
               return (
                 <div key={run.id} className="flex items-start gap-2 rounded-lg px-2 py-2 hover:bg-zinc-800/60">
                   {done ? (
@@ -145,12 +181,12 @@ export default function RunTray({ userId }) {
                           ) : draftState(run) === "rejected" ? (
                             "Draft rejected"
                           ) : (
-                            <Link href="/jobpilot?tab=drafts" className="font-semibold text-purple-300 hover:underline">
-                              Draft ready · Review &amp; send →
-                            </Link>
+                            <span className="text-purple-300">Draft ready</span>
                           )
                         ) : (
-                          "New jobs added to the list"
+                          run.counts?.fetched
+                            ? `${run.counts.fetched} new job${run.counts.fetched === 1 ? "" : "s"} added to the list`
+                            : "No new jobs at the sources right now"
                         )
                       ) : failed ? (
                         run.error?.replace(/^RuntimeError:\s*/, "") || "Did not finish"
@@ -176,15 +212,6 @@ export default function RunTray({ userId }) {
                 </div>
               );
             })}
-            {visible.some((r) => !ACTIVE.includes(r.status)) ? (
-              <button
-                type="button"
-                onClick={dismissAll}
-                className="mt-1 w-full rounded-lg px-2 py-1.5 text-xs text-zinc-500 hover:text-zinc-300"
-              >
-                Clear finished
-              </button>
-            ) : null}
           </div>
         ) : null}
       </div>

@@ -1,21 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Search, Zap } from "lucide-react";
+import { Loader2, RefreshCw, Search, Share2, X, Zap } from "lucide-react";
+import { SHARE_PARAM } from "../../lib/share";
 import { supabase } from "../../lib/supabaseClient";
-import { runState, wakeWorker } from "../../lib/jobpilotClient";
+import { freshnessText, getSearchFreshness, runState, wakeWorker } from "../../lib/jobpilotClient";
 import { trackedIndex } from "../../lib/jobs";
 import { getSetupStatus, missingSetupText } from "../../lib/setup";
 import Loader from "../../components/Loader";
 import JobCard from "../../components/JobCard";
 import PublicJobs from "../../components/PublicJobs";
-import Select from "../../components/Select";
+import CountryPicker from "../../components/CountryPicker";
+import { EUROPEAN_COUNTRIES } from "../../lib/countries";
+import SearchProgress, { LookupProgress } from "../../components/SearchProgress";
 
-const FRESH_DAYS = 15;
+const FRESH_DAYS = 15; // For you: what JobPilot matches and drafts for
+const LIST_DAYS = 30; // Latest jobs, search results and shared links
 const PAGE_SIZE = 30;
-const FEW_RESULTS = 10; // fewer than this: also search the job sources live
 const LOOKUP_ACTIVE = ["queued", "running"];
+const LOOKUP_READS = 25; // job postings the worker reads in full per typed search (worker.LOOKUP_PER_KEYWORD)
 
 const isoDaysAgo = (days) => new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
 const today = () => new Date().toISOString().slice(0, 10);
@@ -47,9 +51,61 @@ const fromMine = (row) => ({
   nice_to_have_skills: row.nice_to_have_skills,
 });
 
-const isFresh = (job) => {
+const isFresh = (job, days = FRESH_DAYS) => {
   const posted = job.posted_at || job.evaluated_at?.slice(0, 10);
-  return (!posted || posted >= isoDaysAgo(FRESH_DAYS)) && (!job.deadline || job.deadline >= today());
+  return (!posted || posted >= isoDaysAgo(days)) && (!job.deadline || job.deadline >= today());
+};
+
+// Same first cut as the worker's pool.title_patterns(): a title must contain a non-role word of one
+// of the user's job titles. A bare "Developer" title means no cut.
+const ROLE_WORDS = new Set(["developer", "engineer", "dev", "programmer", "entwickler", "entwicklerin",
+  "softwareentwickler", "ontwikkelaar", "développeur"]);
+const titleWords = (text) =>
+  (text.toLowerCase().replace(/front-end|front end/g, "frontend").replace(/\//g, " ").match(/[a-zà-ÿ0-9+#.]+/g) || []);
+function titlePatterns(keywords) {
+  const words = new Set();
+  for (const keyword of keywords) {
+    const required = titleWords(keyword).filter((w) => !ROLE_WORDS.has(w));
+    if (!required.length) return [];
+    required.forEach((w) => words.add(w));
+  }
+  return [...words].sort().map((w) => `%${w}%`);
+}
+
+// Progress and outcome of "Refresh my matches".
+function RefreshStatus({ refresh }) {
+  const { status, step, counts = {}, error, freshness } = refresh;
+  const fresh = (counts?.new ?? 0) + (counts?.updated ?? 0);
+  const good = (counts?.strong ?? 0) + (counts?.possible ?? 0);
+  if (status === "failed" || status === "cancelled") {
+    return <p className="mt-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error || "The refresh did not finish."}</p>;
+  }
+  if (status === "finished") {
+    return (
+      <p className="mt-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+        {fresh
+          ? `Checked ${counts.matched ?? fresh} jobs: ${fresh} new, ${good} of them worth applying${counts.drafted ? `, ${counts.drafted} emails drafted in JobPilot` : ""}.`
+          : `Checked ${counts?.matched ?? 0} jobs: nothing new since your last refresh.`}
+        {freshness ? <span className="mt-1 block text-xs text-emerald-200/70">{freshnessText(freshness)}</span> : null}
+      </p>
+    );
+  }
+  return (
+    <div className="mt-3">
+      <SearchProgress status={status} step={step} events={refresh.events} startedAt={refresh.startedAt || refresh.requestedAt} />
+    </div>
+  );
+}
+
+// The user's own scored jobs (For you).
+const fetchMine = async (userId) => {
+  const { data } = await supabase
+    .from("discovered_jobs")
+    .select(MINE_COLUMNS)
+    .eq("user_id", userId)
+    .order("evaluated_at", { ascending: false, nullsFirst: false })
+    .limit(1000);
+  return data || [];
 };
 
 export default function JobsPage() {
@@ -61,14 +117,19 @@ export default function JobsPage() {
   const [setup, setSetup] = useState(null);
 
   const [query, setQuery] = useState("");
-  const [country, setCountry] = useState("");
   // Only jobs whose ad lists an application email, so JobPilot can apply for you.
   const [quickOnly, setQuickOnly] = useState(false);
+  const [showUnlikely, setShowUnlikely] = useState(false);
+  // For you | Latest jobs. A search always shows its results.
+  const [tab, setTab] = useState("forYou");
   const [submitted, setSubmitted] = useState({ q: "", country: "" });
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [lookup, setLookup] = useState(null); // { q, runId, status, error }
+  const [live, setLive] = useState(null); // { q, jobs, loading, error }: instant EURES results
+  // "Refresh my matches": a JobPilot search run (pool first, sources only for stale titles).
+  const [refresh, setRefresh] = useState(null); // { runId, status, step, counts, error }
 
   useEffect(() => {
     const load = async () => {
@@ -80,23 +141,31 @@ export default function JobsPage() {
         setLoading(false);
         return;
       }
-      const [{ data: rows }, { data: trackedRows }, { data: profile }] = await Promise.all([
-        supabase
-          .from("discovered_jobs")
-          .select(MINE_COLUMNS)
-          .eq("user_id", currentUser.id)
-          .order("evaluated_at", { ascending: false, nullsFirst: false })
-          .limit(1000),
+      const [rows, { data: trackedRows }, { data: profile }] = await Promise.all([
+        fetchMine(currentUser.id),
         supabase
           .from("jobs")
           .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via, is_saved")
           .eq("user_id", currentUser.id)
           .or("applied_at.not.is.null,is_saved.eq.true"),
-        supabase.from("candidate_profiles").select("target_countries").eq("user_id", currentUser.id).maybeSingle(),
+        supabase.from("candidate_profiles").select("target_countries, keywords").eq("user_id", currentUser.id).maybeSingle(),
       ]);
-      setMine(rows || []);
+      setMine(rows);
       setTracked(trackedRows || []);
       setCountries(profile?.target_countries || []);
+      profileFilterRef.current = { titles: titlePatterns(profile?.keywords || []) };
+      // The search starts from the profile countries; the picker changes only this search.
+      pickedRef.current = profile?.target_countries || [];
+      setPicked(profile?.target_countries || []);
+      setFilterReady(true);
+      loadDrafts(currentUser.id);
+      const params = new URLSearchParams(window.location.search);
+      if (["forYou", "latest"].includes(params.get("tab"))) setTab(params.get("tab"));
+      const sharedUrl = params.get(SHARE_PARAM);
+      if (sharedUrl) {
+        supabase.rpc("get_shared_job", { p_source_url: sharedUrl }).then(({ data }) =>
+          setSharedJob(data?.[0] ? { ...data[0], discoveredId: null } : { missing: true }));
+      }
       getSetupStatus(currentUser.id).then(setSetup);
       setLoading(false);
     };
@@ -117,15 +186,41 @@ export default function JobsPage() {
   const index = useMemo(() => trackedIndex(tracked), [tracked]);
   const mineByUrl = useMemo(() => new Map(mine.map((row) => [row.source_url, row])), [mine]);
 
-  // Search the shared pool (all users' searches combined). Fewer than FEW_RESULTS: search live too.
+  // Search the shared pool (all users' searches combined); typed searches also ask EURES live.
+  // Jobs scored unlikely for this user (and, with Quick apply, jobs already applied to) are left out
+  // by the database, so every page is full of jobs worth looking at.
+  const showUnlikelyRef = useRef(false);
+  showUnlikelyRef.current = showUnlikely;
+  // Without a typed search, "Latest jobs" shows only jobs for the user's own titles and countries.
+  const profileFilterRef = useRef({ titles: [] });
+  const [picked, setPicked] = useState([]);
+  // Open application drafts by job: cards lead to them instead of writing a second one.
+  const [drafts, setDrafts] = useState(new Map());
+  const loadDrafts = useCallback(async (userId) => {
+    const { data } = await supabase.from("application_drafts").select("discovered_job_id, status, error")
+      .eq("user_id", userId).in("status", ["draft", "approved", "sending", "failed"]);
+    // An interrupted send may still have reached Gmail: the card warns before a second application.
+    const state = (d) => (d.status === "failed" ? (d.error?.startsWith("Interrupted") ? "interrupted" : null) : d.status);
+    const open = (data || []).filter((d) => state(d)).sort((a, b) => (a.status === "failed") - (b.status === "failed"));
+    setDrafts(new Map(open.reverse().map((d) => [d.discovered_job_id, state(d)])));
+  }, []);
+  // A job a friend shared with this user (/jobs?job=<source url>), shown above the lists.
+  const [sharedJob, setSharedJob] = useState(null);
+  const pickedRef = useRef([]);
+  pickedRef.current = picked;
+  const [filterReady, setFilterReady] = useState(false);
   const runSearch = useCallback(async (q, c, offset = 0, emailOnly = false) => {
     setSearching(true);
     const { data, error } = await supabase.rpc("search_jobs", {
       p_query: q,
-      p_country: c,
+      p_country: "",
+      p_country_patterns: pickedRef.current.map((name) => `%${name.toLowerCase()}%`),
       p_limit: PAGE_SIZE,
       p_offset: offset,
       p_email_only: emailOnly,
+      p_hide_unlikely: !showUnlikelyRef.current,
+      p_hide_applied: emailOnly,
+      ...(q ? {} : { p_title_patterns: profileFilterRef.current.titles }),
     });
     if (error) console.error("Job search failed", error);
     const page = data || [];
@@ -136,13 +231,28 @@ export default function JobsPage() {
   }, []);
 
   useEffect(() => {
-    if (user) runSearch(submitted.q, submitted.country, 0, quickOnly);
-    // Re-run when the quick-apply filter changes; new searches go through submit().
+    if (user && filterReady) runSearch(submitted.q, submitted.country, 0, quickOnly);
+    // Re-run when a filter changes; new searches go through submit().
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, runSearch, quickOnly]);
+  }, [user, filterReady, runSearch, quickOnly, showUnlikely, picked]);
 
   const startLookup = useCallback(
     async (q) => {
+      // The same words were searched at the sources in the last hour: those results are already in
+      // the list, and the worker would not search again anyway. Don't queue a run that does nothing.
+      const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+      const { data: recent } = await supabase
+        .from("pipeline_runs")
+        .select("id, status, counts")
+        .eq("user_id", user.id).eq("kind", "lookup").ilike("query", q)
+        .gte("requested_at", since)
+        .order("requested_at", { ascending: false })
+        .limit(1);
+      if (recent?.length) {
+        const run = recent[0];
+        setLookup({ q, runId: run.id, status: run.status, fetched: run.counts?.fetched ?? null, recent: true });
+        return;
+      }
       wakeWorker();
       setLookup({ q, status: "starting" });
       const { data, error } = await supabase
@@ -158,28 +268,69 @@ export default function JobsPage() {
         });
         return;
       }
-      setLookup({ q, runId: data.id, status: data.status });
+      setLookup({ q, runId: data.id, status: data.status, requestedAt: new Date().toISOString(), events: [] });
       window.dispatchEvent(new CustomEvent("jobchain:run-started"));
     },
     [user]
   );
 
+  // Instant results straight from EURES (one request, a few seconds), shown while the worker reads the
+  // full ads in the background (lookup run). Re-asked when the picked countries change.
+  const fetchLive = useCallback(async (q, page = 1) => {
+    if (!q) return setLive(null);
+    setLive((prev) => (page > 1 && prev?.q === q ? { ...prev, loading: true } : { q, jobs: [], loading: true, page: 0 }));
+    try {
+      const params = new URLSearchParams({ q, page: String(page), countries: pickedRef.current.join(",") });
+      const data = await (await fetch(`/api/jobs/eures?${params}`)).json();
+      setLive((prev) => ({
+        q, page, more: Boolean(data.more), loading: false, error: data.error || null,
+        jobs: page > 1 && prev?.q === q ? [...prev.jobs, ...(data.jobs || [])] : data.jobs || [],
+      }));
+    } catch {
+      setLive((prev) => ({ ...(prev || { q, jobs: [] }), loading: false, more: false, error: "EURES unavailable" }));
+    }
+  }, []);
+
   const submit = async (e) => {
     e?.preventDefault();
     const q = query.trim();
-    setSubmitted({ q, country });
+    setSubmitted({ q, country: "" });
     setLookup(null);
-    const page = await runSearch(q, country, 0, quickOnly);
-    if (q && page.length < FEW_RESULTS) startLookup(q);
+    fetchLive(q);
+    await runSearch(q, "", 0, quickOnly);
+    if (q) startLookup(q);
+  };
+
+  useEffect(() => {
+    if (submitted.q) fetchLive(submitted.q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked]);
+
+  const clearSearch = () => {
+    setQuery("");
+    setSubmitted({ q: "", country: "" });
+    setLookup(null);
+    setLive(null);
+    runSearch("", "", 0, quickOnly);
   };
 
   // Follow the live search; show its new jobs when it finishes.
   useEffect(() => {
     if (!lookup?.runId || !LOOKUP_ACTIVE.includes(lookup.status)) return undefined;
     const poll = setInterval(async () => {
-      const state = await runState(lookup.runId);
-      if (!state || state.status === lookup.status) return;
-      setLookup((prev) => ({ ...prev, status: state.status, error: state.error }));
+      const lastId = lookup.events?.at(-1)?.id ?? 0;
+      const [state, { data: newEvents }] = await Promise.all([
+        runState(lookup.runId),
+        supabase.from("pipeline_events").select("id, event_type, details")
+          .eq("run_id", lookup.runId).gt("id", lastId).order("id").limit(200),
+      ]);
+      if (!state) return;
+      if (state.status === lookup.status && !newEvents?.length) return;
+      setLookup((prev) => ({
+        ...prev, status: state.status, error: state.error, fetched: state.counts?.fetched ?? null,
+        startedAt: prev.startedAt || state.started_at,
+        events: [...(prev.events || []), ...(newEvents || [])].slice(-300),
+      }));
       if (state.status === "finished") runSearch(submitted.q, submitted.country, 0, quickOnly);
     }, 3000);
     const wake = setInterval(wakeWorker, lookup.status === "queued" ? 20000 : 240000);
@@ -188,6 +339,76 @@ export default function JobsPage() {
       clearInterval(wake);
     };
   }, [lookup, runSearch, submitted, quickOnly]);
+
+  const startRefresh = async () => {
+    wakeWorker();
+    setRefresh({ status: "starting" });
+    const { data, error } = await supabase
+      .from("pipeline_runs")
+      .insert({ user_id: user.id, kind: "search" })
+      .select("id, status")
+      .single();
+    if (error) {
+      setRefresh({
+        status: "failed",
+        error: error.code === "23505" ? "JobPilot is already running for you. Check its progress in JobPilot." : error.message,
+      });
+      return;
+    }
+    setRefresh({ runId: data.id, status: data.status, requestedAt: new Date().toISOString(), events: [] });
+    window.dispatchEvent(new CustomEvent("jobchain:run-started"));
+  };
+
+  // Follow the refresh; when it finishes, reload the matches it scored.
+  useEffect(() => {
+    if (!refresh?.runId || !LOOKUP_ACTIVE.includes(refresh.status)) return undefined;
+    const poll = setInterval(async () => {
+      const lastId = refresh.events?.at(-1)?.id ?? 0;
+      const [{ data }, { data: newEvents }] = await Promise.all([
+        supabase.from("pipeline_runs").select("status, error, current_step, counts, started_at")
+          .eq("id", refresh.runId).maybeSingle(),
+        supabase.from("pipeline_events").select("id, event_type, details")
+          .eq("run_id", refresh.runId).gt("id", lastId).order("id").limit(200),
+      ]);
+      if (!data) return;
+      setRefresh((prev) => ({
+        ...prev, status: data.status, step: data.current_step, counts: data.counts, error: data.error,
+        startedAt: data.started_at || prev.startedAt,
+        events: [...(prev.events || []), ...(newEvents || [])].slice(-400),
+      }));
+      if (data.status === "finished") {
+        const freshness = await getSearchFreshness();
+        setRefresh((prev) => ({ ...prev, freshness }));
+        setMine(await fetchMine(user.id));
+        loadDrafts(user.id);
+        runSearch(submitted.q, submitted.country, 0, quickOnly);
+      }
+    }, 3000);
+    const wake = setInterval(wakeWorker, refresh.status === "queued" ? 20000 : 240000);
+    return () => {
+      clearInterval(poll);
+      clearInterval(wake);
+    };
+  }, [refresh, user, runSearch, submitted, quickOnly]);
+
+  const isVisible = (row) =>
+    !mineByUrl.get(row.source_url)?.dismissed && isFresh(row, LIST_DAYS) && (!quickOnly || !index.appliedFor(row));
+
+  // Next page at the bottom. If a page brings nothing visible, keep going (up to 5 pages) so the
+  // button never just disappears while more jobs exist.
+  const loadMore = async () => {
+    // Stored jobs first; once they run out, the next page straight from EURES.
+    if (!hasMore && live?.more && live.q === submitted.q) {
+      await fetchLive(live.q, (live.page || 1) + 1);
+      return;
+    }
+    let offset = results.length;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const page = await runSearch(submitted.q, "", offset, quickOnly);
+      if (page.length < PAGE_SIZE || page.some(isVisible)) return;
+      offset += page.length;
+    }
+  };
 
   const handleChange = ({ type, row, discoveredId, sourceUrl }) => {
     if (type === "saved" || type === "applied") {
@@ -210,9 +431,15 @@ export default function JobsPage() {
 
   if (!user) return <PublicJobs />;
 
-  const forYou = mine
+  const refreshing = Boolean(refresh) && ["starting", ...LOOKUP_ACTIVE].includes(refresh.status);
+  const searchActive = Boolean(submitted.q);
+  const view = searchActive ? "latest" : tab;
+  const goodMatches = mine
     .filter((row) => ["strong", "possible"].includes(row.match_label) && !row.dismissed && isFresh(row))
-    .map(fromMine)
+    .map(fromMine);
+  // Matches with an email that were already applied to: "For you" can be empty because the work is done.
+  const appliedQuick = goodMatches.filter((job) => job.has_email && index.appliedFor(job)).length;
+  const forYou = goodMatches
     .filter((job) => !index.appliedFor(job))
     .filter((job) => !quickOnly || job.has_email)
     .sort(
@@ -222,15 +449,24 @@ export default function JobsPage() {
         String(b.posted_at || "").localeCompare(String(a.posted_at || ""))
     );
 
-  // Jobs already applied to sink to the bottom; with "Quick apply only" they are hidden (nothing left to do).
-  const shownResults = results
-    .filter((r) => !mineByUrl.get(r.source_url)?.dismissed)
+  // Kept in the database's order, so "Load more" always adds to the bottom. The database already
+  // leaves out unlikely jobs and (with Quick apply) jobs applied to; this only drops dismissed ones.
+  const stored = results
+    .filter((r) => isVisible(r))
     .map((r) => {
       const own = mineByUrl.get(r.source_url);
       return own ? { ...fromMine(own), snippet: r.snippet, has_email: r.has_email } : { ...r, discoveredId: null };
-    })
-    .filter((job) => !quickOnly || !index.appliedFor(job))
-    .sort((a, b) => Number(Boolean(index.appliedFor(a))) - Number(Boolean(index.appliedFor(b))));
+    });
+  // EURES results not stored yet, after the stored ones. Quick apply needs a known email, so not there.
+  const storedUrls = new Set(results.map((r) => r.source_url));
+  const reading = LOOKUP_ACTIVE.includes(lookup?.status) || lookup?.status === "starting";
+  // Only the ads the worker is reading right now get a "checking" note; the rest are plain previews.
+  const liveOnly = live && live.q === submitted.q && !quickOnly
+    ? live.jobs.filter((j) => !storedUrls.has(j.source_url) && isVisible(j))
+        .map((j, i) => ({ ...j, checking: reading && i < LOOKUP_READS }))
+    : [];
+  const shownResults = [...stored, ...liveOnly];
+  const searchingSources = Boolean(live?.loading) || LOOKUP_ACTIVE.includes(lookup?.status) || lookup?.status === "starting";
 
   const card = (job) => (
     <JobCard
@@ -241,6 +477,7 @@ export default function JobsPage() {
       applied={index.appliedFor(job)}
       onChange={handleChange}
       setupMissing={missingSetupText(setup)}
+      draftStatus={drafts.get(job.discoveredId || mineByUrl.get(job.source_url)?.id)}
     />
   );
 
@@ -251,7 +488,7 @@ export default function JobsPage() {
           Jobs
         </h1>
         <p className="text-zinc-400 mb-3 text-sm sm:text-base text-center">
-          Fresh jobs across Europe from the last {FRESH_DAYS} days, from every JobChain search. The more people search, the more jobs
+          Jobs across Europe from the last month, from every JobChain search. The more people search, the more jobs
           there are.
         </p>
       </div>
@@ -265,17 +502,16 @@ export default function JobsPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search title, skill, company or city (e.g. React Berlin)"
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-3 pl-10 pr-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600"
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-3 pl-10 pr-10 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600"
             />
+            {query ? (
+              <button type="button" onClick={() => (submitted.q ? clearSearch() : setQuery(""))} aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white">
+                <X size={16} />
+              </button>
+            ) : null}
           </div>
-          <Select
-            small
-            className="w-full sm:w-48"
-            label="Country"
-            value={country}
-            onChange={setCountry}
-            options={[{ value: "", label: "All countries" }, ...countries.map((c) => ({ value: c, label: c }))]}
-          />
+          <CountryPicker options={EUROPEAN_COUNTRIES} profileCountries={countries} value={picked} onChange={setPicked} />
           <button
             type="submit"
             disabled={searching}
@@ -303,32 +539,100 @@ export default function JobsPage() {
           </span>
         </div>
 
-        {!submitted.q && !submitted.country ? (
-          <section>
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-xl font-semibold">For you ({forYou.length})</h2>
-              <Link href="/jobpilot" className="text-sm text-purple-300 hover:underline">
-                Refresh my matches →
-              </Link>
+        {sharedJob ? (
+          <section className="rounded-2xl border border-purple-500/40 bg-purple-500/5 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="inline-flex items-center gap-2 text-sm font-semibold text-purple-200">
+                <Share2 size={15} /> Shared with you
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSharedJob(null);
+                  window.history.replaceState(null, "", "/jobs");
+                }}
+                className="text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                ✕ Close
+              </button>
             </div>
-            <p className="mt-1 text-sm text-zinc-500">Strong and possible matches for your profile.</p>
+            {sharedJob.missing ? (
+              <p className="text-sm text-zinc-400">This job is no longer open (jobs stay listed for a month after posting).</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2">
+                {card(mineByUrl.get(sharedJob.source_url) ? fromMine(mineByUrl.get(sharedJob.source_url)) : sharedJob)}
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        {searchActive ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+            <h2 className="text-xl font-semibold">
+              Results for “{submitted.q}”
+            </h2>
+            <button type="button" onClick={clearSearch} className="text-sm font-semibold text-purple-300 hover:underline">
+              ✕ Clear search
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-zinc-800">
+            <div role="tablist" aria-label="Job lists" className="flex gap-1">
+              {[
+                ["forYou", "For you", forYou.length],
+                ["latest", quickOnly ? "All quick apply jobs" : "Latest jobs", null],
+              ].map(([id, label, count]) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === id}
+                  onClick={() => setTab(id)}
+                  className={`-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm sm:text-base font-semibold transition ${
+                    tab === id ? "border-purple-500 text-white" : "border-transparent text-zinc-500 hover:text-zinc-200"
+                  }`}
+                >
+                  {label}
+                  {count != null ? (
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${tab === id ? "bg-purple-500/25 text-purple-100" : "bg-zinc-800 text-zinc-400"}`}>
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+            {tab === "forYou" ? (
+              <button
+                type="button"
+                onClick={startRefresh}
+                disabled={refreshing}
+                className="mb-2 inline-flex items-center gap-1.5 whitespace-nowrap text-sm font-semibold text-purple-300 hover:underline disabled:opacity-60 disabled:no-underline"
+              >
+                <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} />
+                {refreshing ? "Refreshing…" : "Refresh my matches"}
+              </button>
+            ) : null}
+          </div>
+        )}
+
+        {view === "forYou" ? (
+          <section role="tabpanel" className="-mt-4">
+            <p className="text-sm text-zinc-500">Strong and possible matches for your profile, best first.</p>
+            {refresh ? <RefreshStatus refresh={refresh} /> : null}
             {forYou.length === 0 && quickOnly ? (
               <div className="mt-4 rounded-2xl border border-purple-500/30 bg-purple-500/10 p-5 text-center text-sm text-purple-100">
-                None of your scored matches lists an email right now.{" "}
+                {appliedQuick
+                  ? `You've applied to all ${appliedQuick} of your matches that list an email 🎉 `
+                  : "None of your matches lists an email right now. "}
                 {shownResults.length ? (
-                  <a
-                    href="#all-jobs"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      document.getElementById("all-jobs")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                    }}
-                    className="font-semibold underline"
-                  >
+                  <button type="button" onClick={() => setTab("latest")} className="font-semibold underline">
                     See {shownResults.length}
-                    {hasMore ? "+" : ""} quick-apply jobs from everyone&apos;s searches ↓
-                  </a>
+                    {hasMore ? "+" : ""} more quick-apply jobs from everyone&apos;s searches →
+                  </button>
                 ) : (
-                  "Try again after the next search."
+                  <button type="button" onClick={startRefresh} disabled={refreshing} className="font-semibold underline disabled:opacity-60">
+                    Find new quick apply jobs now →
+                  </button>
                 )}
               </div>
             ) : forYou.length === 0 ? (
@@ -349,13 +653,20 @@ export default function JobsPage() {
           </section>
         ) : null}
 
-        <section id="all-jobs" className="scroll-mt-20">
-          <h2 className="text-xl font-semibold">
-            {quickOnly && !submitted.q && !submitted.country ? "Quick apply jobs from everyone's searches" : null}
-            {quickOnly && !submitted.q && !submitted.country ? null : submitted.q ? `Results for “${submitted.q}”` : submitted.country ? `Latest in ${submitted.country}` : "Latest jobs"}
-          </h2>
+        {view === "latest" ? (
+        <section role="tabpanel" className="-mt-4">
+          {!searchActive ? (
+            <p className="text-sm text-zinc-500">
+              {quickOnly
+                ? "Jobs from everyone's searches that list an application email."
+                : "The newest jobs for your job titles and countries, from everyone's searches. Search above to see every job."}
+            </p>
+          ) : null}
 
-          {lookup && lookup.q === submitted.q ? (
+          {lookup && lookup.q === submitted.q && reading ? (
+            <LookupProgress query={submitted.q} status={lookup.status} events={lookup.events}
+              startedAt={lookup.startedAt || lookup.requestedAt} target={LOOKUP_READS} />
+          ) : lookup && lookup.q === submitted.q && shownResults.length ? (
             <p
               className={`mt-2 text-sm ${
                 lookup.status === "finished"
@@ -366,42 +677,91 @@ export default function JobsPage() {
               }`}
             >
               {lookup.status === "finished"
-                ? "Searched EURES and Arbeitnow too: new jobs are included below."
+                ? lookup.fetched
+                  ? `Searched EURES and Arbeitnow too: ${lookup.fetched} new job${lookup.fetched === 1 ? "" : "s"} added below.`
+                  : lookup.recent
+                    ? "These words were searched at EURES and Arbeitnow within the last hour: everything they had is below."
+                    : "Searched EURES and Arbeitnow too: they have no new jobs for these words right now."
                 : ["failed", "cancelled"].includes(lookup.status)
                   ? lookup.error || "The live search did not finish."
-                  : lookup.status === "queued"
-                    ? "Few jobs here yet. Waking up JobPilot to search EURES and Arbeitnow…"
+                  : liveOnly.length
+                    ? `JobPilot is reading the first ${Math.min(liveOnly.length, LOOKUP_READS)} of these job postings in full to find which ones you can quick apply to. About a minute; the list updates by itself.`
                     : "Searching EURES and Arbeitnow for more…"}
             </p>
           ) : null}
 
-          {searching && results.length === 0 ? (
+          {(searching && results.length === 0 && !searchActive) ? (
             <div className="py-12 flex justify-center">
               <Loader size="lg" />
             </div>
           ) : shownResults.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
-              {LOOKUP_ACTIVE.includes(lookup?.status) || lookup?.status === "starting"
-                ? "Looking for jobs…"
-                : "No fresh jobs match this search. Try fewer or different words."}
+              {searchActive && (searching || searchingSources) ? (
+                <span className="inline-flex items-center gap-2 text-purple-200">
+                  <Loader2 size={16} className="animate-spin" />
+                  Searching EURES and Arbeitnow for “{submitted.q}”…
+                </span>
+              ) : searchActive ? (
+                "No fresh jobs match this search. Try fewer or different words."
+              ) : quickOnly ? (
+                <>
+                  <p className="text-zinc-200">You&apos;re all caught up on quick apply jobs.</p>
+                  <p className="mt-1 text-sm">
+                    You&apos;ve applied to every one that fits you. JobPilot finds new ones each time it searches the job
+                    sources.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTab("forYou");
+                      startRefresh();
+                    }}
+                    disabled={refreshing}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-60"
+                  >
+                    <RefreshCw size={14} /> Find new quick apply jobs
+                  </button>
+                </>
+              ) : (
+                "No fresh jobs right now. JobPilot adds more each time anyone searches."
+              )}
             </div>
           ) : (
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">{shownResults.map(card)}</div>
           )}
 
-          {hasMore ? (
+          <p className="mt-4 text-center text-xs text-zinc-500">
+            {showUnlikely ? (
+              <>
+                Showing jobs that look unlikely for you too.{" "}
+                <button type="button" onClick={() => setShowUnlikely(false)} className="text-purple-300 hover:underline">
+                  Hide them
+                </button>
+              </>
+            ) : (
+              <>
+                Jobs that look unlikely for you (a language, seniority or stack you don&apos;t have) are hidden.{" "}
+                <button type="button" onClick={() => setShowUnlikely(true)} className="text-purple-300 hover:underline">
+                  Show them
+                </button>
+              </>
+            )}
+          </p>
+
+          {hasMore || (searchActive && live?.more && !quickOnly) ? (
             <div className="mt-6 flex justify-center">
               <button
                 type="button"
                 disabled={searching}
-                onClick={() => runSearch(submitted.q, submitted.country, results.length, quickOnly)}
+                onClick={loadMore}
                 className="whitespace-nowrap rounded-xl border border-zinc-700 px-5 py-2.5 font-semibold hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50"
               >
-                {searching ? "Loading…" : "Load more"}
+                {searching || live?.loading ? "Loading…" : "Load more"}
               </button>
             </div>
           ) : null}
         </section>
+        ) : null}
       </div>
     </div>
   );

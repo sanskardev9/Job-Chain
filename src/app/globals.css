@@ -69,3 +69,90 @@ body {
     animation: none !important;
   }
 }
+
+/* Our own clear button replaces the browser's (blue) one in search fields. */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* "How JobPilot works" timeline: an electric bolt that flickers, and a flash on each step it reaches. */
+@keyframes boltFlicker {
+  0%, 100% { opacity: 1; }
+  8% { opacity: 0.55; }
+  10% { opacity: 1; }
+  47% { opacity: 0.85; }
+  50% { opacity: 0.4; }
+  53% { opacity: 1; }
+  78% { opacity: 0.7; }
+}
+@keyframes sparkPulse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.35); }
+}
+@keyframes zapFlash {
+  0% { box-shadow: 0 0 0 0 rgba(232, 121, 249, 0.9); }
+  100% { box-shadow: 0 0 0 22px rgba(232, 121, 249, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bolt-flicker, .spark-pulse, .zap-flash { animation: none !important; }
+}
+
+/* Home page: moving glow blobs behind the hero, shimmering accent text, cursor spotlight on cards. */
+@keyframes auroraA {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(12%, 10%) scale(1.15); }
+}
+@keyframes auroraB {
+  0%, 100% { transform: translate(0, 0) scale(1.1); }
+  50% { transform: translate(-14%, 6%) scale(0.95); }
+}
+@keyframes shimmer {
+  to { background-position: 200% center; }
+}
+.text-shimmer {
+  background: linear-gradient(90deg, #c084fc, #e879f9, #f0abfc, #a78bfa, #c084fc);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 5s linear infinite;
+}
+/* The card lights up around the cursor (--mx / --my set by the page). */
+.spotlight {
+  position: relative;
+  isolation: isolate;
+}
+.spotlight::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 50%), rgba(168, 85, 247, 0.14), transparent 45%);
+}
+.spotlight::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  padding: 1px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 50%), rgba(232, 121, 249, 0.75), transparent 55%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+.spotlight:hover::before,
+.spotlight:hover::after {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .text-shimmer { animation: none; }
+  .aurora { animation: none !important; }
+}

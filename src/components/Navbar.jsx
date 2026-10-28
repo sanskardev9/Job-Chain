@@ -144,6 +144,7 @@ export default function Navbar() {
           alt="JobChain logo"
           width={28}
           height={30}
+          style={{ width: "auto", height: "auto" }}
           priority
         />
         <h1 className="text-xl sm:text-2xl font-extrabold hover:text-purple-600 transition-colors tracking-wide hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] duration-300 leading-tight whitespace-nowrap">

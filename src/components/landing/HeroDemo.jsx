@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { EmailMock, MatchesMock, SAMPLE_PERSONA, SearchMock, SentMock, sampleEmail } from "./Mockups";
+import { BATCH_TOTAL, BulkSendMock, EmailMock, MatchesMock, SAMPLE_PERSONA, SearchMock, sampleEmail } from "./Mockups";
 
 const SCENES = [
   { label: "Finds jobs", ms: 3200 },
   { label: "Checks the fit", ms: 3800 },
-  { label: "Writes the email", ms: 5200 },
-  { label: "You send it", ms: 3400 },
+  { label: "Writes the emails", ms: 5200 },
+  { label: "Send them all", ms: 4600 },
 ];
 
 // A short looping "video" of JobPilot at work, built from the real screens' look.
@@ -41,6 +41,17 @@ export default function HeroDemo({ persona = SAMPLE_PERSONA }) {
     return () => cancelAnimationFrame(frame);
   }, [scene, SAMPLE_EMAIL.subject.length, SAMPLE_EMAIL.body.length]);
 
+  // Batch scene: the approved drafts go out one after another.
+  const [sent, setSent] = useState(0);
+  useEffect(() => {
+    if (scene !== 3) {
+      setSent(0);
+      return undefined;
+    }
+    const timer = setInterval(() => setSent((n) => Math.min(n + 1, BATCH_TOTAL)), 260);
+    return () => clearInterval(timer);
+  }, [scene]);
+
   const subjectLen = SAMPLE_EMAIL.subject.length;
 
   return (
@@ -49,7 +60,8 @@ export default function HeroDemo({ persona = SAMPLE_PERSONA }) {
       <div className="relative">
         {/* All scenes share one grid cell, so the box is always as tall as the tallest scene
             (an invisible, fully typed email included) and the page never shifts. */}
-        <div className="grid">
+        {/* grid-cols-1: the column may shrink to the screen; long one-line text truncates instead. */}
+        <div className="grid grid-cols-1">
           {[
             <SearchMock key="search" />,
             <MatchesMock key="matches" />,
@@ -60,7 +72,7 @@ export default function HeroDemo({ persona = SAMPLE_PERSONA }) {
               body={SAMPLE_EMAIL.body.slice(0, Math.max(0, typed - subjectLen))}
               cursor
             />,
-            <SentMock key="sent" persona={persona} />,
+            <BulkSendMock key="sent" persona={persona} sent={sent} />,
           ].map((content, i) => (
             <div
               key={i}

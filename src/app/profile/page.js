@@ -7,8 +7,10 @@ import { startGmailConnect } from "../../lib/gmailClient";
 import Loader from "../../components/Loader";
 import PdfModal from "../../components/PdfModal";
 import SetupGuide from "../../components/SetupGuide";
+import ProfileView from "../../components/ProfileView";
 import Select from "../../components/Select";
 import TagInput from "../../components/TagInput";
+import { EUROPEAN_COUNTRIES } from "../../lib/countries";
 import { parseCv, pdfText } from "../../lib/cvParse";
 import { wakeWorker } from "../../lib/jobpilotClient";
 import { useRouter } from "next/navigation";
@@ -23,13 +25,7 @@ const LANGUAGE_LEVELS = [
   { value: "C2", label: "C2 · Proficient", hint: "Near-native in every situation" },
   { value: "Native", label: "Native", hint: "Your first language" },
 ];
-// European countries the job sources cover.
-const TARGET_COUNTRIES = [
-  "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Finland", "France",
-  "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania", "Luxembourg",
-  "Malta", "Netherlands", "Norway", "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden",
-  "Switzerland",
-];
+const TARGET_COUNTRIES = EUROPEAN_COUNTRIES;
 const KEYWORD_SUGGESTIONS = [
   "Frontend Developer", "React Developer", "JavaScript Developer", "Web Developer", "HTML/CSS Developer",
   "Full Stack Developer", "Backend Developer", "Node.js Developer", "TypeScript Developer", "Angular Developer",
@@ -152,6 +148,8 @@ export default function ProfilePage() {
   const [starting, setStarting] = useState(false);
   // Checklist shows while setup is incomplete, during onboarding, or right after finishing it.
   const [showGuide, setShowGuide] = useState(false);
+  // A finished profile opens as a read-only page; the tabbed form shows while editing or setting up.
+  const [editing, setEditing] = useState(true);
   // Which profile tab is open: cv | details | search | gmail.
   const [step, setStep] = useState("cv");
   const router = useRouter();
@@ -217,10 +215,11 @@ export default function ProfilePage() {
       setDetailsSaved(Boolean(data?.skills?.length));
       setPrefsSaved(data?.needs_sponsorship != null);
       const params = new URLSearchParams(window.location.search);
-      setShowGuide(
+      const settingUp =
         !data?.skills?.length || data?.needs_sponsorship == null || !data?.cv_storage_path || !account ||
-          params.has("welcome") || params.has("gmail")
-      );
+        params.has("welcome") || params.has("gmail");
+      setShowGuide(settingUp);
+      setEditing(settingUp || Boolean(readDraft(currentUser.id)?.form));
       // Open the first unfinished step (Gmail right after connecting it).
       setStep(
         params.has("gmail") ? "gmail"
@@ -483,6 +482,11 @@ export default function ProfilePage() {
     const error = await persistProfile();
     if (error) {
       setErrorMessage(error);
+    } else if (!showGuide) {
+      // Editing a finished profile: back to the profile page.
+      setEditing(false);
+      setMessage("Profile saved. JobPilot will use it on its next run.");
+      window.scrollTo({ top: 0 });
     } else if (step === "details" || step === "search") {
       goTo(step === "details" ? "search" : "gmail");
     } else {
@@ -601,6 +605,45 @@ export default function ProfilePage() {
         </p>
       </div>
 
+      {!editing ? (
+        <ProfileView
+          form={form}
+          cv={cv}
+          gmail={gmail}
+          levels={LANGUAGE_LEVELS}
+          sendModes={SEND_MODES}
+          message={message}
+          cvOpening={cvOpening}
+          onViewCv={viewCv}
+          onEdit={(id) => {
+            setMessage("");
+            setEditing(true);
+            setStep(id);
+            window.scrollTo({ top: 0 });
+          }}
+        />
+      ) : (
+      <>
+      {!showGuide ? (
+        <div className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              if (dirty && !window.confirm("Leave without saving your changes?")) return;
+              if (dirty) {
+                clearDraft(user.id);
+                window.location.reload();
+                return;
+              }
+              setEditing(false);
+            }}
+            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-300 hover:border-zinc-500 transition"
+          >
+            ← Back to profile
+          </button>
+          <span className="text-sm text-zinc-500">Editing your profile</span>
+        </div>
+      ) : null}
       <SetupGuide
         steps={STEPS.map((s) => ({ ...s, done: { cv: Boolean(cv), details: detailsSaved, search: prefsSaved, gmail: Boolean(gmail) }[s.id] }))}
         active={step}
@@ -852,11 +895,13 @@ export default function ProfilePage() {
           ) : (
             <button type="submit" disabled={saving}
               className="flex-1 rounded-xl bg-white px-4 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-60">
-              {saving ? "Saving..." : step === "gmail" ? "Save" : "Save & continue →"}
+              {saving ? "Saving..." : step === "gmail" || !showGuide ? "Save" : "Save & continue →"}
             </button>
           )}
         </div>
       </form>
+      </>
+      )}
 
       {cvPreviewUrl ? (
         <PdfModal url={cvPreviewUrl} title={cv?.filename || "CV"} onClose={() => setCvPreviewUrl("")} />

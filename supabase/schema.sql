@@ -736,3 +736,344 @@ create unique index pipeline_runs_one_active
   on public.pipeline_runs (user_id) where status in ('queued', 'running') and kind <> 'draft';
 create unique index if not exists pipeline_runs_one_draft_per_job
   on public.pipeline_runs (discovered_job_id) where status in ('queued', 'running') and kind = 'draft';
+
+-- Worker reads each user's fresh, relevant pool jobs from the database instead of loading the
+-- whole pool; details only for jobs this user has not scored yet. Old jobs are pruned after 30 days.
+create or replace function public.pool_candidates(
+  p_user_id uuid, p_title_patterns text[], p_country_patterns text[], p_days int default 15)
+returns table(source_url text, source text, title text, company text, country text, location text,
+              work_mode text, content_hash text, data jsonb)
+language sql stable security definer set search_path = public as $$
+  select p.source_url, p.source, p.title, p.company, p.country, p.location,
+         p.data->>'work_mode', p.content_hash,
+         case when exists (select 1 from discovered_jobs d
+                           where d.user_id = p_user_id and d.source_url = p.source_url
+                             and d.content_hash is not distinct from p.content_hash
+                             and d.evaluated_at is not null)
+              then null else p.data end
+  from job_pool p
+  where coalesce(p.posted_at, p.fetched_at::date) >= current_date - p_days
+    and (p.deadline is null or p.deadline >= current_date)
+    and (coalesce(cardinality(p_title_patterns), 0) = 0
+         or replace(replace(lower(p.title), 'front-end', 'frontend'), 'front end', 'frontend')
+            like any (p_title_patterns))
+    and (coalesce(cardinality(p_country_patterns), 0) = 0
+         or p.country is null
+         or lower(coalesce(p.country, '') || ' ' || coalesce(p.location, '')) like any (p_country_patterns));
+$$;
+revoke all on function public.pool_candidates(uuid, text[], text[], int) from public, anon, authenticated;
+grant execute on function public.pool_candidates(uuid, text[], text[], int) to service_role;
+
+create or replace function public.prune_stale_jobs(p_days int default 30)
+returns void language sql security definer set search_path = public as $$
+  delete from job_pool
+  where coalesce(posted_at, fetched_at::date) < current_date - p_days;
+  delete from discovered_jobs d
+  where coalesce(d.posted_at, d.discovered_at::date) < current_date - p_days
+    and not exists (select 1 from application_drafts a where a.discovered_job_id = d.id)
+    and not exists (select 1 from jobs j where j.discovered_job_id = d.id)
+    and not exists (select 1 from pipeline_runs r where r.discovered_job_id = d.id);
+$$;
+revoke all on function public.prune_stale_jobs(int) from public, anon, authenticated;
+grant execute on function public.prune_stale_jobs(int) to service_role;
+
+-- Jobs page search hides the user's unlikely and applied jobs in the query, so pages stay full.
+-- Jobs page search over the shared pool. Hides, for the signed-in user, jobs JobPilot scored as
+-- unlikely (p_hide_unlikely) and jobs they already applied to (p_hide_applied), in the query
+-- itself so every page is full.
+drop function if exists public.search_jobs(text, text, int, int, boolean);
+create or replace function public.search_jobs(p_query text default '', p_country text default '',
+  p_limit int default 30, p_offset int default 0, p_email_only boolean default false,
+  p_hide_unlikely boolean default false, p_hide_applied boolean default false)
+returns table(source_url text, source text, title text, company text, country text, location text,
+              posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public as $$
+  with q as (
+    select case when trim(coalesce(p_query, '')) = '' then null
+           else websearch_to_tsquery('simple', p_query) end as tsq
+  )
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220),
+         case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end
+  from public.job_pool p, q
+  where auth.uid() is not null
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 15
+    and (p.deadline is null or p.deadline >= current_date)
+    and (q.tsq is null or p.search @@ q.tsq)
+    and (coalesce(p_country, '') = '' or p.country ilike p_country)
+    and (not p_email_only or p.has_email)
+    and (not p_hide_unlikely or not exists (
+      select 1 from discovered_jobs d
+      where d.user_id = auth.uid() and d.source_url = p.source_url and d.match_label = 'unlikely'))
+    and (not p_hide_applied or not exists (
+      select 1 from jobs j
+      left join discovered_jobs d on d.id = j.discovered_job_id
+      where j.user_id = auth.uid() and j.applied_at is not null
+        and (j.job_url = p.source_url or d.source_url = p.source_url)))
+  order by case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end desc,
+           p.has_email desc,
+           coalesce(p.posted_at, p.fetched_at::date) desc
+  limit least(greatest(p_limit, 1), 60) offset greatest(p_offset, 0);
+$$;
+revoke all on function public.search_jobs(text, text, int, int, boolean, boolean, boolean) from public, anon;
+grant execute on function public.search_jobs(text, text, int, int, boolean, boolean, boolean) to authenticated;
+
+-- When the caller's job titles were last fetched from the sources and when they can be again.
+CREATE OR REPLACE FUNCTION public.search_freshness(p_recheck_minutes integer DEFAULT 60)
+ RETURNS TABLE(last_searched_at timestamp with time zone, next_fresh_at timestamp with time zone, titles integer, waiting integer)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  -- When the caller's job titles were last fetched from the sources, and from when a search
+  -- can fetch at least one of them again (null = now). Mirrors pool.keyword_key() / RECHECK_HOURS.
+  with mine as (
+    select 'kw:' || lower(regexp_replace(trim(k), '\s+', ' ', 'g')) as key
+    from candidate_profiles, unnest(keywords) k
+    where user_id = auth.uid() and trim(k) <> ''
+  ), times as (
+    select m.key, f.fetched_at from mine m left join job_pool_fetches f on f.key = m.key
+  )
+  select max(fetched_at),
+         case when bool_or(fetched_at is null or fetched_at < now() - make_interval(mins => p_recheck_minutes))
+              then null
+              else min(fetched_at) + make_interval(mins => p_recheck_minutes) end,
+         count(*)::int,
+         count(*) filter (where fetched_at >= now() - make_interval(mins => p_recheck_minutes))::int
+  from times;
+$function$
+
+;
+revoke all on function public.search_freshness(int) from public, anon;
+grant execute on function public.search_freshness(int) to authenticated;
+
+-- search_jobs v2: Latest jobs filtered to the user's own titles and countries (replaces the version above).
+-- Jobs page search over the shared pool. Hides, for the signed-in user, jobs JobPilot scored as
+-- unlikely (p_hide_unlikely) and jobs they already applied to (p_hide_applied), in the query
+-- itself so every page is full.
+drop function if exists public.search_jobs(text, text, int, int, boolean);
+drop function if exists public.search_jobs(text, text, int, int, boolean, boolean, boolean);
+create or replace function public.search_jobs(p_query text default '', p_country text default '',
+  p_limit int default 30, p_offset int default 0, p_email_only boolean default false,
+  p_hide_unlikely boolean default false, p_hide_applied boolean default false,
+  p_title_patterns text[] default null, p_country_patterns text[] default null)
+returns table(source_url text, source text, title text, company text, country text, location text,
+              posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public as $$
+  with q as (
+    select case when trim(coalesce(p_query, '')) = '' then null
+           else websearch_to_tsquery('simple', p_query) end as tsq
+  )
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220),
+         case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end
+  from public.job_pool p, q
+  where auth.uid() is not null
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 15
+    and (p.deadline is null or p.deadline >= current_date)
+    and (q.tsq is null or p.search @@ q.tsq)
+    and (coalesce(p_country, '') = '' or p.country ilike p_country)
+    and (not p_email_only or p.has_email)
+    -- "Latest jobs" for this user: titles and countries from their profile (same cut as pool_candidates).
+    and (coalesce(cardinality(p_title_patterns), 0) = 0
+         or replace(replace(lower(p.title), 'front-end', 'frontend'), 'front end', 'frontend')
+            like any (p_title_patterns))
+    and (coalesce(cardinality(p_country_patterns), 0) = 0 or p.country is null
+         or lower(coalesce(p.country, '') || ' ' || coalesce(p.location, '')) like any (p_country_patterns))
+    and (not p_hide_unlikely or not exists (
+      select 1 from discovered_jobs d
+      where d.user_id = auth.uid() and d.source_url = p.source_url and d.match_label = 'unlikely'))
+    and (not p_hide_applied or not exists (
+      select 1 from jobs j
+      left join discovered_jobs d on d.id = j.discovered_job_id
+      where j.user_id = auth.uid() and j.applied_at is not null
+        and (j.job_url = p.source_url or d.source_url = p.source_url)))
+  order by case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end desc,
+           p.has_email desc,
+           coalesce(p.posted_at, p.fetched_at::date) desc
+  limit least(greatest(p_limit, 1), 60) offset greatest(p_offset, 0);
+$$;
+revoke all on function public.search_jobs(text, text, int, int, boolean, boolean, boolean, text[], text[]) from public, anon;
+grant execute on function public.search_jobs(text, text, int, int, boolean, boolean, boolean, text[], text[]) to authenticated;
+
+-- Shared job links (/jobs?job=<source url>): the full job for signed-in users, and the same safe
+-- preview fields as preview_jobs() for visitors (no company, link, email or description).
+create or replace function public.get_shared_job(p_source_url text)
+returns table(source_url text, source text, title text, company text, country text, location text,
+              posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public as $$
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220), 0::real
+  from public.job_pool p
+  where auth.uid() is not null and p.source_url = p_source_url
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 15;
+$$;
+revoke all on function public.get_shared_job(text) from public, anon;
+grant execute on function public.get_shared_job(text) to authenticated;
+
+create or replace function public.preview_shared_job(p_source_url text)
+returns table(id text, title text, country text, location text, posted_at date, deadline date, has_email boolean)
+language sql stable security definer set search_path = public as $$
+  select md5(p.source_url), p.title, p.country, p.location, p.posted_at, p.deadline, p.has_email
+  from public.job_pool p
+  where p.source_url = p_source_url
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 15;
+$$;
+revoke all on function public.preview_shared_job(text) from public;
+grant execute on function public.preview_shared_job(text) to anon, authenticated;
+
+-- Jobs page lists 30 days (JobPilot matching stays 15); typed searches treat role words as optional.
+-- Jobs page search over the shared pool. Hides, for the signed-in user, jobs JobPilot scored as
+-- unlikely (p_hide_unlikely) and jobs they already applied to (p_hide_applied), in the query
+-- itself so every page is full.
+drop function if exists public.search_jobs(text, text, int, int, boolean);
+drop function if exists public.search_jobs(text, text, int, int, boolean, boolean, boolean);
+create or replace function public.search_jobs(p_query text default '', p_country text default '',
+  p_limit int default 30, p_offset int default 0, p_email_only boolean default false,
+  p_hide_unlikely boolean default false, p_hide_applied boolean default false,
+  p_title_patterns text[] default null, p_country_patterns text[] default null)
+returns table(source_url text, source text, title text, company text, country text, location text,
+              posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public as $$
+  -- Generic role words are optional ("CNC programmer" also finds "CNC-Fräser"), as in pool.core_terms().
+  with core as (
+    select nullif(trim(regexp_replace(coalesce(p_query, ''),
+      '\\m(developers?|engineers?|programmers?|devs?|entwickler(in)?|softwareentwickler|ontwikkelaar|développeur)\\M',
+      ' ', 'gi')), '') as text
+  ), q as (
+    select case when trim(coalesce(p_query, '')) = '' then null
+           else websearch_to_tsquery('simple', coalesce(core.text, p_query)) end as tsq
+    from core
+  )
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220),
+         case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end
+  from public.job_pool p, q
+  where auth.uid() is not null
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 30
+    and (p.deadline is null or p.deadline >= current_date)
+    and (q.tsq is null or p.search @@ q.tsq)
+    and (coalesce(p_country, '') = '' or p.country ilike p_country)
+    and (not p_email_only or p.has_email)
+    -- "Latest jobs" for this user: titles and countries from their profile (same cut as pool_candidates).
+    and (coalesce(cardinality(p_title_patterns), 0) = 0
+         or replace(replace(lower(p.title), 'front-end', 'frontend'), 'front end', 'frontend')
+            like any (p_title_patterns))
+    and (coalesce(cardinality(p_country_patterns), 0) = 0 or p.country is null
+         or lower(coalesce(p.country, '') || ' ' || coalesce(p.location, '')) like any (p_country_patterns))
+    and (not p_hide_unlikely or not exists (
+      select 1 from discovered_jobs d
+      where d.user_id = auth.uid() and d.source_url = p.source_url and d.match_label = 'unlikely'))
+    and (not p_hide_applied or not exists (
+      select 1 from jobs j
+      left join discovered_jobs d on d.id = j.discovered_job_id
+      where j.user_id = auth.uid() and j.applied_at is not null
+        and (j.job_url = p.source_url or d.source_url = p.source_url)))
+  order by case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end desc,
+           p.has_email desc,
+           coalesce(p.posted_at, p.fetched_at::date) desc
+  limit least(greatest(p_limit, 1), 60) offset greatest(p_offset, 0);
+$$;
+revoke all on function public.search_jobs(text, text, int, int, boolean, boolean, boolean, text[], text[]) from public, anon;
+grant execute on function public.search_jobs(text, text, int, int, boolean, boolean, boolean, text[], text[]) to authenticated;
+-- Shared job links (/jobs?job=<source url>): the full job for signed-in users, and the same safe
+-- preview fields as preview_jobs() for visitors (no company, link, email or description).
+create or replace function public.get_shared_job(p_source_url text)
+returns table(source_url text, source text, title text, company text, country text, location text,
+              posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public as $$
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220), 0::real
+  from public.job_pool p
+  where auth.uid() is not null and p.source_url = p_source_url
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 30;
+$$;
+revoke all on function public.get_shared_job(text) from public, anon;
+grant execute on function public.get_shared_job(text) to authenticated;
+
+create or replace function public.preview_shared_job(p_source_url text)
+returns table(id text, title text, country text, location text, posted_at date, deadline date, has_email boolean)
+language sql stable security definer set search_path = public as $$
+  select md5(p.source_url), p.title, p.country, p.location, p.posted_at, p.deadline, p.has_email
+  from public.job_pool p
+  where p.source_url = p_source_url
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 30;
+$$;
+revoke all on function public.preview_shared_job(text) from public;
+grant execute on function public.preview_shared_job(text) to anon, authenticated;
+CREATE OR REPLACE FUNCTION public.preview_jobs(p_query text DEFAULT ''::text, p_country text DEFAULT ''::text, p_limit integer DEFAULT 24)
+ RETURNS TABLE(id text, title text, country text, location text, posted_at date, deadline date, has_email boolean)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  with q as (
+    select case when trim(coalesce(p_query, '')) = '' then null
+           else websearch_to_tsquery('simple', p_query) end as tsq
+  )
+  select md5(p.source_url), p.title, p.country, p.location, p.posted_at, p.deadline, p.has_email
+  from public.job_pool p, q
+  where coalesce(p.posted_at, p.fetched_at::date) >= current_date - 30
+    and (p.deadline is null or p.deadline >= current_date)
+    and (q.tsq is null or p.search @@ q.tsq)
+    and (coalesce(p_country, '') = '' or p.country ilike p_country)
+  order by case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end desc,
+           coalesce(p.posted_at, p.fetched_at::date) desc
+  limit least(greatest(p_limit, 1), 24);
+$function$
+;
+CREATE OR REPLACE FUNCTION public.preview_countries()
+ RETURNS TABLE(country text, jobs bigint)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select p.country, count(*) from public.job_pool p
+  where p.country is not null and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 30
+    and (p.deadline is null or p.deadline >= current_date)
+  group by p.country order by count(*) desc;
+$function$
+;
+
+-- Closed vacancies (deadline passed) are never listed, shared or kept.
+-- Shared job links (/jobs?job=<source url>): the full job for signed-in users, and the same safe
+-- preview fields as preview_jobs() for visitors (no company, link, email or description).
+create or replace function public.get_shared_job(p_source_url text)
+returns table(source_url text, source text, title text, company text, country text, location text,
+              posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public as $$
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220), 0::real
+  from public.job_pool p
+  where auth.uid() is not null and p.source_url = p_source_url
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 30
+    and (p.deadline is null or p.deadline >= current_date);
+$$;
+revoke all on function public.get_shared_job(text) from public, anon;
+grant execute on function public.get_shared_job(text) to authenticated;
+
+create or replace function public.preview_shared_job(p_source_url text)
+returns table(id text, title text, country text, location text, posted_at date, deadline date, has_email boolean)
+language sql stable security definer set search_path = public as $$
+  select md5(p.source_url), p.title, p.country, p.location, p.posted_at, p.deadline, p.has_email
+  from public.job_pool p
+  where p.source_url = p_source_url
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 30
+    and (p.deadline is null or p.deadline >= current_date);
+$$;
+revoke all on function public.preview_shared_job(text) from public;
+grant execute on function public.preview_shared_job(text) to anon, authenticated;
+-- Cleanup: postings older than p_days or past their application deadline (and users' scored
+-- copies of them that no draft, tracker entry or run still uses).
+create or replace function public.prune_stale_jobs(p_days int default 31)
+returns void language sql security definer set search_path = public as $$
+  delete from job_pool
+  where coalesce(posted_at, fetched_at::date) < current_date - p_days or deadline < current_date;
+  delete from discovered_jobs d
+  where (coalesce(d.posted_at, d.discovered_at::date) < current_date - p_days or d.deadline < current_date)
+    and not exists (select 1 from application_drafts a where a.discovered_job_id = d.id)
+    and not exists (select 1 from jobs j where j.discovered_job_id = d.id)
+    and not exists (select 1 from pipeline_runs r where r.discovered_job_id = d.id);
+$$;
+revoke all on function public.prune_stale_jobs(int) from public, anon, authenticated;
+grant execute on function public.prune_stale_jobs(int) to service_role;

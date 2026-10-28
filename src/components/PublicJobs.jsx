@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bookmark, CheckCircle2, Lock, Search, Sparkles, X } from "lucide-react";
+import { Bookmark, CheckCircle2, Lock, Search, Share2, Sparkles, X } from "lucide-react";
+import { SHARE_PARAM } from "../lib/share";
 import { supabase } from "../lib/supabaseClient";
 import { jobDates } from "../lib/dates";
 import Loader from "./Loader";
@@ -20,6 +21,8 @@ export default function PublicJobs() {
   const [loading, setLoading] = useState(true);
   // { job, action } when a visitor tries to act on a job; null when closed.
   const [prompt, setPrompt] = useState(null);
+  // A job someone shared (/jobs?job=<source url>): shown first; signing up or in leads back to it.
+  const [shared, setShared] = useState(null); // { job, back } | { missing: true }
 
   const search = async (q = "", c = "") => {
     setLoading(true);
@@ -32,6 +35,12 @@ export default function PublicJobs() {
   useEffect(() => {
     search();
     supabase.rpc("preview_countries").then(({ data }) => setCountries(data || []));
+    const sharedUrl = new URLSearchParams(window.location.search).get(SHARE_PARAM);
+    if (sharedUrl) {
+      const back = encodeURIComponent(`/jobs?${SHARE_PARAM}=${encodeURIComponent(sharedUrl)}`);
+      supabase.rpc("preview_shared_job", { p_source_url: sharedUrl }).then(({ data }) =>
+        setShared(data?.[0] ? { job: data[0], back } : { missing: true }));
+    }
   }, []);
 
   const total = countries.reduce((sum, c) => sum + Number(c.jobs || 0), 0);
@@ -41,7 +50,7 @@ export default function PublicJobs() {
       <div className="flex flex-col items-center justify-center text-center">
         <h1 className="text-3xl font-extrabold mb-3 sm:mb-6 mt-6 tracking-tight sm:text-5xl">Jobs</h1>
         <p className="text-zinc-400 text-sm sm:text-base">
-          {total ? `${total.toLocaleString()} jobs in Europe posted in the last 15 days` : "Fresh jobs in Europe from the last 15 days"}
+          {total ? `${total.toLocaleString()} jobs in Europe posted in the last month` : "Fresh jobs in Europe from the last month"}
           {countries.length ? ` across ${countries.length} countries.` : "."} Sign up to see which ones fit you, and
           apply with one email.
         </p>
@@ -62,8 +71,14 @@ export default function PublicJobs() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Try “React”, “Frontend Berlin” or “Web Developer”"
-              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-3 pl-10 pr-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600"
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-3 pl-10 pr-10 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600"
             />
+            {query ? (
+              <button type="button" onClick={() => { setQuery(""); search("", country); }} aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white">
+                <X size={16} />
+              </button>
+            ) : null}
           </div>
           <Select
             small
@@ -83,6 +98,43 @@ export default function PublicJobs() {
             Search
           </button>
         </form>
+
+        {shared?.job ? (
+          <section className="rounded-2xl border border-purple-500/50 bg-gradient-to-br from-purple-600/25 via-zinc-900 to-zinc-950 p-5 sm:p-6">
+            <p className="inline-flex items-center gap-2 text-sm font-semibold text-purple-200">
+              <Share2 size={15} /> A friend shared this job with you
+            </p>
+            <h2 className="mt-3 text-2xl font-bold text-white">{shared.job.title}</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              {[shared.job.location, shared.job.country].filter(Boolean).join(", ")}
+              {jobDates(shared.job) ? ` · ${jobDates(shared.job)}` : ""}
+            </p>
+            <ul className="mt-4 grid gap-2 text-sm text-zinc-300 sm:grid-cols-3">
+              {[
+                "See the company and the full posting",
+                "Check how well it fits your skills and visa needs",
+                shared.job.has_email ? "Apply with a tailored email in one click" : "Track your application",
+              ].map((text) => (
+                <li key={text} className="flex items-start gap-2">
+                  <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" /> {text}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Link href={`/login?signup=1&redirect=${shared.back}`}
+                className="rounded-xl bg-white px-5 py-3 text-center font-semibold text-black hover:bg-purple-600 hover:text-white transition">
+                Sign up free to see this job
+              </Link>
+              <Link href={`/login?redirect=${shared.back}`} className="text-center text-sm text-purple-300 hover:underline sm:px-3">
+                I already have an account
+              </Link>
+            </div>
+          </section>
+        ) : shared?.missing ? (
+          <p className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-sm text-zinc-400">
+            The job that was shared with you is no longer open. Here are other fresh jobs instead.
+          </p>
+        ) : null}
 
         <div className="flex flex-col gap-3 rounded-2xl border border-purple-500/40 bg-purple-500/10 p-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-purple-100">

@@ -5,7 +5,9 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 import DraftsPanel from "../../components/DraftsPanel";
-import { wakeWorker } from "../../lib/jobpilotClient";
+import SearchProgress from "../../components/SearchProgress";
+import { Clock } from "lucide-react";
+import { freshnessText, getSearchFreshness, wakeWorker } from "../../lib/jobpilotClient";
 
 const TABS = [
   { id: "activity", label: "Run & activity" },
@@ -39,6 +41,83 @@ const time = (value) =>
   value ? new Date(value).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
 const dateTime = (value) =>
   value ? new Date(value).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+
+// What one search did, from everything it looked at down to the emails it wrote.
+function SearchFunnel({ run, live, toReview = 0, approved = 0, onOpenDrafts }) {
+  const c = run.counts || {};
+  const draftState = toReview
+    ? `${toReview} waiting for your OK`
+    : approved
+      ? `${approved} approved, ready to send`
+      : c.drafted
+        ? "all reviewed ✓"
+        : "none this time";
+  const stages = [
+    { value: c.matched ?? 0, label: "jobs checked", hint: "matching your titles and countries", bar: "bg-zinc-500",
+      href: "/jobs?tab=latest" },
+    { value: (c.new ?? 0) + (c.updated ?? 0), label: "new or updated", hint: "since your last search", bar: "bg-blue-400",
+      href: "/jobs?tab=latest" },
+    { value: (c.strong ?? 0) + (c.possible ?? 0), label: "worth applying", hint: `${c.strong ?? 0} strong · ${c.possible ?? 0} possible`,
+      bar: "bg-purple-400", href: "/jobs?tab=forYou" },
+    { value: c.drafted ?? 0, label: "emails drafted", hint: draftState, bar: "bg-emerald-400", onClick: onOpenDrafts },
+  ];
+  const good = (c.strong ?? 0) + (c.possible ?? 0);
+  // Good matches without a draft list no email: they are applied to on the employer's site.
+  const onSite = Math.max(good - (c.drafted ?? 0), 0);
+  const top = Math.max(stages[0].value, 1);
+  return (
+    <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        {live ? "This search so far" : `Last search · ${dateTime(run.finished_at || run.requested_at)}`}
+      </p>
+      <ol className="mt-3 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
+        {stages.map((stage, index) => {
+          const body = (
+            <>
+            <p className="text-2xl font-extrabold text-white tabular-nums">
+              {stage.value.toLocaleString()}
+              {index < stages.length - 1 ? <span className="ml-2 hidden text-base font-normal text-zinc-600 sm:inline">→</span> : null}
+            </p>
+            <p className="text-sm text-zinc-300">{stage.label}</p>
+            <p className="truncate text-xs text-zinc-500">{stage.hint}</p>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+              <div
+                className={`h-full rounded-full ${stage.bar} transition-all duration-700`}
+                style={{ width: `${stage.value ? Math.max((stage.value / top) * 100, 4) : 0}%` }}
+              />
+            </div>
+            </>
+          );
+          // Every number opens the jobs behind it.
+          const cls = "-m-2 block w-[calc(100%+1rem)] rounded-lg p-2 text-left transition hover:bg-zinc-800/60";
+          return (
+            <li key={stage.label} className="relative min-w-0">
+              {stage.href ? (
+                <Link href={stage.href} className={cls} title={`See the ${stage.label} jobs`}>{body}</Link>
+              ) : stage.onClick ? (
+                <button type="button" onClick={stage.onClick} className={cls} title="Open your drafts">{body}</button>
+              ) : body}
+            </li>
+          );
+        })}
+      </ol>
+      {onSite ? (
+        <p className="mt-3 text-sm text-zinc-300">
+          {onSite} of the {good} worth applying {onSite === 1 ? "lists" : "list"} no email, so you apply on the employer&apos;s
+          site.{" "}
+          <Link href="/jobs?tab=forYou" className="font-semibold text-purple-300 hover:underline">
+            See {onSite === 1 ? "it" : "them"} in For you →
+          </Link>
+        </p>
+      ) : null}
+      {c.unlikely ? (
+        <p className="mt-3 text-xs text-zinc-500">
+          {c.unlikely} skipped as unlikely (missing skills, language or experience), so you don&apos;t waste time on them.
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 function CheckRow({ ok, label, hint, href }) {
   return (
@@ -85,9 +164,23 @@ export default function JobPilotPage() {
   // Applications being written show in the corner tray; this panel follows searches and sends.
   const latestRun = runs.find((run) => run.kind !== "draft") || null;
   const running = latestRun && ACTIVE.includes(latestRun.status);
+  // The search funnel stays visible after a send run, so the scale of each search isn't hidden.
+  const searches = runs.filter((run) => run.kind === "search" && Object.keys(run.counts || {}).length);
+  const foundSomething = (run) => (run.counts.new ?? 0) + (run.counts.updated ?? 0) > 0;
+  // A repeat search that found nothing new keeps showing the last search that did, plus a note.
+  const latestSearch = searches[0] || null;
+  const searchRun =
+    latestSearch && (ACTIVE.includes(latestSearch.status) || foundSomething(latestSearch))
+      ? latestSearch
+      : searches.find(foundSomething) || latestSearch;
+  const quietCheck = latestSearch && searchRun && latestSearch.id !== searchRun.id ? latestSearch : null;
+  const sendRun = runs.find((run) => run.kind === "send" && Object.keys(run.counts || {}).length) || null;
 
   const loadSetup = useCallback(async (currentUser) => {
-    const [{ data: profile }, { data: account }, { data: workers }, { count: approved }, { count: toReview }] =
+    const [
+      { data: profile }, { data: account }, { data: workers }, { count: approved }, { count: toReview },
+      { count: scored }, { count: sent }, { data: pool },
+    ] =
       await Promise.all([
         supabase.from("candidate_profiles")
           .select("skills, keywords, cv_storage_path, send_mode, max_sends_per_run, experience_years, languages")
@@ -98,7 +191,12 @@ export default function JobPilotPage() {
           .eq("user_id", currentUser.id).eq("status", "approved"),
         supabase.from("application_drafts").select("*", { count: "exact", head: true })
           .eq("user_id", currentUser.id).eq("status", "draft"),
+        supabase.from("discovered_jobs").select("*", { count: "exact", head: true }).eq("user_id", currentUser.id),
+        supabase.from("application_drafts").select("*", { count: "exact", head: true })
+          .eq("user_id", currentUser.id).eq("status", "sent"),
+        supabase.rpc("preview_countries"),
       ]);
+    const freshness = await getSearchFreshness();
     const lastSeen = workers?.[0]?.last_seen;
     setSetup({
       profile,
@@ -108,6 +206,13 @@ export default function JobPilotPage() {
       workerSending: Boolean(workers?.[0]?.sending_enabled),
       approved: approved || 0,
       toReview: toReview || 0,
+      freshness,
+      totals: {
+        pool: (pool || []).reduce((sum, c) => sum + Number(c.jobs || 0), 0),
+        countries: (pool || []).length,
+        scored: scored || 0,
+        sent: sent || 0,
+      },
     });
   }, []);
 
@@ -117,7 +222,7 @@ export default function JobPilotPage() {
       .select("*")
       .eq("user_id", currentUser.id)
       .order("requested_at", { ascending: false })
-      .limit(10);
+      .limit(30);
     setRuns(data || []);
     return data?.[0] || null;
   }, []);
@@ -140,6 +245,13 @@ export default function JobPilotPage() {
       lastEventId.current = data[data.length - 1].id;
       setEvents((prev) => [...prev, ...data]);
     }
+  }, []);
+
+  // The tray's "Review & send" while already on this page: switch to the Drafts tab.
+  useEffect(() => {
+    const openDrafts = () => setTab("drafts");
+    window.addEventListener("jobchain:open-drafts", openDrafts);
+    return () => window.removeEventListener("jobchain:open-drafts", openDrafts);
   }, []);
 
   useEffect(() => {
@@ -325,14 +437,50 @@ export default function JobPilotPage() {
             </p>
             {latestRun?.error ? <p className="mt-2 text-sm text-red-400">{latestRun.error}</p> : null}
 
-            {Object.keys(latestRun?.counts || {}).length ? (
-              <div className="mt-4 flex flex-wrap gap-2 text-xs">
-                {Object.entries(latestRun.counts).map(([name, value]) => (
-                  <span key={name} className="rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-zinc-300">
-                    {name}: <span className="font-semibold text-white">{value}</span>
-                  </span>
+            {setup?.totals ? (
+              <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
+                {[
+                  [setup.totals.pool, "fresh jobs", `across ${setup.totals.countries} European countries`],
+                  [setup.totals.scored, "jobs checked for you", "against your profile"],
+                  [setup.totals.sent, "applications sent", "from your Gmail"],
+                ].map(([value, label, hint]) => (
+                  <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                    <p className="text-xl sm:text-3xl font-extrabold text-white">{value.toLocaleString()}</p>
+                    <p className="text-xs sm:text-sm text-zinc-300">{label}</p>
+                    <p className="hidden sm:block text-xs text-zinc-500">{hint}</p>
+                  </div>
                 ))}
               </div>
+            ) : null}
+
+            {running && latestRun.kind === "search" ? (
+              <div className="mt-5">
+                <SearchProgress status={latestRun.status} step={latestRun.current_step} events={events}
+                  startedAt={latestRun.started_at || latestRun.requested_at} />
+              </div>
+            ) : searchRun ? (
+              <SearchFunnel run={searchRun} live={false} toReview={setup?.toReview} approved={setup?.approved}
+                onOpenDrafts={() => setTab("drafts")} />
+            ) : null}
+            {quietCheck ? (
+              <p className="mt-3 text-sm text-zinc-400">
+                Checked again {dateTime(quietCheck.finished_at || quietCheck.requested_at)}:{" "}
+                <span className="text-zinc-200">nothing new yet.</span>
+              </p>
+            ) : null}
+            {!running && setup?.freshness ? (
+              <p className="mt-2 flex items-start gap-2 text-xs text-zinc-500">
+                <Clock size={14} className="mt-px shrink-0" />
+                {freshnessText(setup.freshness)}
+              </p>
+            ) : null}
+
+            {sendRun ? (
+              <p className="mt-3 text-sm text-zinc-400">
+                {ACTIVE.includes(sendRun.status) ? "Sending now" : `Last send ${dateTime(sendRun.finished_at || sendRun.requested_at)}`}:{" "}
+                <span className="font-semibold text-emerald-300">{sendRun.counts.sent ?? 0} sent</span>
+                {sendRun.counts.failed ? <span className="text-red-300">, {sendRun.counts.failed} failed</span> : null}
+              </p>
             ) : null}
 
             <div className="mt-5 flex flex-wrap items-center gap-3">
