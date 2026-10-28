@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import { startGmailConnect } from "../../lib/gmailClient";
 import Loader from "../../components/Loader";
 import PdfModal from "../../components/PdfModal";
 import SetupGuide from "../../components/SetupGuide";
+import { parseCv, pdfText } from "../../lib/cvParse";
 import { wakeWorker } from "../../lib/jobpilotClient";
 import { useRouter } from "next/navigation";
 
@@ -78,10 +79,31 @@ const toList = (text) =>
 const inputClass =
   "w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600";
 
-function Field({ label, hint, children }) {
+function FieldTag({ tag }) {
+  if (tag === "cv") {
+    return (
+      <span className="ml-2 rounded-full border border-purple-500/40 bg-purple-500/15 px-2 py-0.5 text-[10px] font-semibold text-purple-200">
+        From your CV
+      </span>
+    );
+  }
+  if (tag === "missing") {
+    return (
+      <span className="ml-2 rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-200">
+        Please fill in
+      </span>
+    );
+  }
+  return null;
+}
+
+function Field({ label, hint, children, tag }) {
   return (
     <label className="block">
-      <span className="block text-sm font-semibold text-zinc-200 mb-1">{label}</span>
+      <span className="block text-sm font-semibold text-zinc-200 mb-1">
+        {label}
+        <FieldTag tag={tag} />
+      </span>
       {children}
       {hint ? <span className="block text-xs text-zinc-500 mt-1">{hint}</span> : null}
     </label>
@@ -106,6 +128,12 @@ export default function ProfilePage() {
   const [cv, setCv] = useState(null);
   const [cvBusy, setCvBusy] = useState(false);
   const [cvError, setCvError] = useState("");
+  // CV autofill: which fields were filled from the CV, and whether to flag empty ones.
+  const [cvReading, setCvReading] = useState(false);
+  const [cvFillNote, setCvFillNote] = useState("");
+  const [autoFilled, setAutoFilled] = useState([]);
+  const formRef = useRef(form);
+  formRef.current = form;
   const [cvOpening, setCvOpening] = useState(false);
   const [cvPreviewUrl, setCvPreviewUrl] = useState("");
   const [confirmRemoveCv, setConfirmRemoveCv] = useState(false);
@@ -256,6 +284,79 @@ export default function ProfilePage() {
       setCv({ path, filename: file.name });
     }
     setCvBusy(false);
+    if (!error) await autofillFromCv(file);
+  };
+
+  // Fills only empty fields from the CV text (plain rules, no AI); the user checks and saves.
+  const autofillFromCv = async (source) => {
+    setCvReading(true);
+    setCvFillNote("");
+    try {
+      const found = parseCv(await pdfText(source));
+      const filled = [];
+      const prev = formRef.current;
+      const next = { ...prev };
+      {
+        const fillText = (key, value) => {
+          if (value && !String(prev[key] || "").trim()) {
+            next[key] = value;
+            filled.push(key);
+          }
+        };
+        fillText("preferred_name", found.preferred_name);
+        fillText("current_base", found.current_base);
+        fillText("github_url", found.github_url);
+        fillText("linkedin_url", found.linkedin_url);
+        fillText("education", found.education);
+        if (found.skills?.length && !String(prev.skills || "").trim()) {
+          next.skills = found.skills.join(", ");
+          filled.push("skills");
+        }
+        if (found.experience && prev.experience_years_part === "" && prev.experience_months_part === "") {
+          next.experience_years_part = String(found.experience.years);
+          next.experience_months_part = String(found.experience.months);
+          filled.push("experience");
+        }
+        if (found.languages?.length && !(prev.languages || []).some((l) => l.language?.trim())) {
+          next.languages = found.languages;
+          filled.push("languages");
+        }
+      }
+      setForm(next);
+      setDirty(true);
+      setAutoFilled((prev) => [...new Set([...prev, ...filled])]);
+      setCvFillNote(
+        filled.length
+          ? `Filled ${filled.length} field${filled.length === 1 ? "" : "s"} from your CV (marked “From your CV”). Check them, fill in the ones marked “Please fill in”, then save.`
+          : "Your profile already had everything your CV mentions. Fill in anything marked “Please fill in”, then save."
+      );
+      document.getElementById("setup-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (err) {
+      console.error("Could not read the CV", err);
+      setCvFillNote("Your CV is uploaded, but its text could not be read (scanned PDFs have no text). Please fill in your details below.");
+    }
+    setCvReading(false);
+  };
+
+  const fillFromSavedCv = async () => {
+    const { data, error } = await supabase.storage.from(CV_BUCKET).download(cv.path);
+    if (error) {
+      setCvError(error.message);
+      return;
+    }
+    await autofillFromCv(data);
+  };
+
+  // Tag shown next to a field label: filled from the CV, or still empty after reading the CV.
+  const tagFor = (key, required = true) => {
+    if (autoFilled.includes(key)) return "cv";
+    if (!required || !cv) return null;
+    const empty = {
+      experience: form.experience_years_part === "" && form.experience_months_part === "",
+      languages: !(form.languages || []).some((l) => l.language?.trim()),
+      needs_sponsorship: form.needs_sponsorship === "",
+    }[key] ?? !String(form[key] || "").trim();
+    return empty ? "missing" : null;
   };
 
   // Shows the CV in a modal on this page, using a short-lived private link.
@@ -439,8 +540,8 @@ export default function ProfilePage() {
 
       {showGuide ? <SetupGuide
         steps={[
-          { id: "setup-details", label: "Your details", hint: "Skills, experience, languages, where you want to work", done: detailsSaved },
-          { id: "setup-cv", label: "Your CV", hint: "PDF, attached to every application", done: Boolean(cv) },
+          { id: "setup-cv", label: "Upload your CV", hint: "We fill in your details from it", done: Boolean(cv) },
+          { id: "setup-details", label: "Check your details", hint: "Fix anything, fill what's missing, save", done: detailsSaved },
           { id: "setup-gmail", label: "Connect Gmail", hint: "Send-only: applications go from your address", done: Boolean(gmail) },
         ]}
         starting={starting}
@@ -448,22 +549,69 @@ export default function ProfilePage() {
       /> : null}
 
       <form onSubmit={saveProfile} className="max-w-3xl mx-auto py-4 space-y-6">
+        <section id="setup-cv" className="scroll-mt-24 rounded-2xl border border-purple-500/30 bg-zinc-900 p-6 space-y-3">
+          <h2 className="text-xl font-semibold">Start with your CV</h2>
+          <p className="text-sm text-zinc-400">
+            Upload it and JobPilot fills in what it can find. You only fill in what is left.
+          </p>
+          <div>
+                        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3">
+              {cv ? (
+                <>
+                  <span className="text-zinc-200 truncate max-w-full">{cv.filename}</span>
+                  <button type="button" onClick={viewCv} disabled={cvBusy || cvOpening}
+                    className="whitespace-nowrap rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50">
+                    {cvOpening ? "Opening…" : "View"}
+                  </button>
+                  <button type="button" onClick={() => setConfirmRemoveCv(true)} disabled={cvBusy}
+                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50">
+                    Remove
+                  </button>
+                </>
+              ) : (
+                <span className="text-zinc-500">No CV uploaded</span>
+              )}
+              <label className={`ml-auto rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition cursor-pointer ${cvBusy ? "opacity-50 pointer-events-none" : ""}`}>
+                {cvBusy ? "Uploading..." : cv ? "Replace" : "Upload PDF"}
+                <input type="file" accept="application/pdf" className="hidden" onChange={uploadCv} />
+              </label>
+            </div>
+            <span className="block text-xs text-zinc-500 mt-1">
+              PDF, up to 5 MB. Stored privately; attached only to emails you approve.
+            </span>
+            {cvReading ? (
+              <p className="mt-3 flex items-center gap-2 text-sm text-purple-200">
+                <span className="h-2 w-2 animate-ping rounded-full bg-purple-400" /> Reading your CV and filling in your profile…
+              </p>
+            ) : null}
+            {cvFillNote ? (
+              <p className="mt-3 rounded-lg border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-sm text-purple-100">{cvFillNote}</p>
+            ) : null}
+            {cv && !cvReading ? (
+              <button type="button" onClick={fillFromSavedCv}
+                className="mt-3 text-sm font-semibold text-purple-300 hover:underline">
+                Fill empty fields from my CV
+              </button>
+            ) : null}
+            {cvError ? <span className="block text-sm text-red-400 mt-1">{cvError}</span> : null}
+          </div>
+        </section>
         <section id="setup-details" className="scroll-mt-24 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
           <h2 className="text-xl font-semibold">About you</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Name used in emails">
+            <Field label="Name used in emails" tag={tagFor("preferred_name")}>
               <input className={inputClass} value={form.preferred_name}
                 onChange={(e) => setField("preferred_name", e.target.value)} />
             </Field>
-            <Field label="Current base" hint="Country you live in now.">
+            <Field label="Current base" hint="Country you live in now." tag={tagFor("current_base")}>
               <input className={inputClass} value={form.current_base} placeholder="India"
                 onChange={(e) => setField("current_base", e.target.value)} />
             </Field>
-            <Field label="GitHub URL">
+            <Field label="GitHub URL" tag={tagFor("github_url", false)}>
               <input type="url" className={inputClass} value={form.github_url}
                 onChange={(e) => setField("github_url", e.target.value)} />
             </Field>
-            <Field label="LinkedIn URL">
+            <Field label="LinkedIn URL" tag={tagFor("linkedin_url", false)}>
               <input type="url" className={inputClass} value={form.linkedin_url}
                 onChange={(e) => setField("linkedin_url", e.target.value)} />
             </Field>
@@ -476,7 +624,7 @@ export default function ProfilePage() {
             <input className={inputClass} value={form.role_family}
               onChange={(e) => setField("role_family", e.target.value)} />
           </Field>
-          <Field label="Skills" hint="Comma separated. Only skills listed here are ever claimed.">
+          <Field label="Skills" hint="Comma separated, strongest first. Only skills listed here are ever claimed." tag={tagFor("skills")}>
             <input className={inputClass} value={form.skills}
               placeholder="JavaScript, React.js, Next.js, HTML, CSS"
               onChange={(e) => setField("skills", e.target.value)} />
@@ -485,6 +633,7 @@ export default function ProfilePage() {
             <div>
               <span className="block text-sm font-semibold text-zinc-200 mb-1">
                 Your experience
+                <FieldTag tag={tagFor("experience")} />
               </span>
               <div className="flex gap-2">
                 <input type="number" min="0" max="60" step="1" className={inputClass}
@@ -507,14 +656,14 @@ export default function ProfilePage() {
                 onChange={(e) => setField("max_required_experience_years", e.target.value)} />
             </Field>
           </div>
-          <Field label="Education">
+          <Field label="Education" tag={tagFor("education", false)}>
             <input className={inputClass} value={form.education}
               placeholder="e.g. B.Tech Computer Science, 2023"
               onChange={(e) => setField("education", e.target.value)} />
           </Field>
 
           <div>
-            <span className="block text-sm font-semibold text-zinc-200 mb-1">Languages</span>
+            <span className="block text-sm font-semibold text-zinc-200 mb-1">Languages<FieldTag tag={tagFor("languages")} /></span>
             <div className="space-y-2">
               {form.languages.map((item, index) => (
                 <div key={index} className="flex gap-2">
@@ -545,7 +694,7 @@ export default function ProfilePage() {
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
           <h2 className="text-xl font-semibold">Job search</h2>
-          <Field label="Do you need visa / work-permit sponsorship?">
+          <Field label="Do you need visa / work-permit sponsorship?" tag={tagFor("needs_sponsorship")}>
             <select className={inputClass} value={form.needs_sponsorship}
               onChange={(e) => setField("needs_sponsorship", e.target.value)}>
               <option value="">Not set</option>
@@ -553,7 +702,7 @@ export default function ProfilePage() {
               <option value="false">No</option>
             </select>
           </Field>
-          <Field label="Target countries" hint="Comma separated. Empty means all of Europe.">
+          <Field label="Target countries" hint="Comma separated. Empty means all of Europe." tag={tagFor("target_countries")}>
             <input className={inputClass} value={form.target_countries}
               placeholder="Germany, Netherlands, Ireland"
               onChange={(e) => setField("target_countries", e.target.value)} />
@@ -563,34 +712,6 @@ export default function ProfilePage() {
               placeholder="Frontend Developer, React Developer"
               onChange={(e) => setField("keywords", e.target.value)} />
           </Field>
-          <div id="setup-cv" className="scroll-mt-24">
-            <span className="block text-sm font-semibold text-zinc-200 mb-1">CV</span>
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3">
-              {cv ? (
-                <>
-                  <span className="text-zinc-200 truncate max-w-full">{cv.filename}</span>
-                  <button type="button" onClick={viewCv} disabled={cvBusy || cvOpening}
-                    className="whitespace-nowrap rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50">
-                    {cvOpening ? "Opening…" : "View"}
-                  </button>
-                  <button type="button" onClick={() => setConfirmRemoveCv(true)} disabled={cvBusy}
-                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50">
-                    Remove
-                  </button>
-                </>
-              ) : (
-                <span className="text-zinc-500">No CV uploaded</span>
-              )}
-              <label className={`ml-auto rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition cursor-pointer ${cvBusy ? "opacity-50 pointer-events-none" : ""}`}>
-                {cvBusy ? "Uploading..." : cv ? "Replace" : "Upload PDF"}
-                <input type="file" accept="application/pdf" className="hidden" onChange={uploadCv} />
-              </label>
-            </div>
-            <span className="block text-xs text-zinc-500 mt-1">
-              PDF, up to 5 MB. Stored privately; attached only to emails you approve.
-            </span>
-            {cvError ? <span className="block text-sm text-red-400 mt-1">{cvError}</span> : null}
-          </div>
         </section>
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
