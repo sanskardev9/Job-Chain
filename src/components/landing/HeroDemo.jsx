@@ -46,17 +46,33 @@ export default function HeroDemo() {
     <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} className="relative">
       <div className="pointer-events-none absolute -inset-6 rounded-[2rem] bg-purple-600/20 blur-3xl" />
       <div className="relative">
-        <div key={scene} className="animate-[fadeUp_0.45s_ease-out]">
-          {scene === 0 ? <SearchMock /> : null}
-          {scene === 1 ? <MatchesMock /> : null}
-          {scene === 2 ? (
+        {/* All scenes share one grid cell, so the box is always as tall as the tallest scene
+            (an invisible, fully typed email included) and the page never shifts. */}
+        <div className="grid">
+          {[
+            <SearchMock key="search" />,
+            <MatchesMock key="matches" />,
             <EmailMock
+              key="email"
               subject={SAMPLE_EMAIL.subject.slice(0, typed)}
               body={SAMPLE_EMAIL.body.slice(0, Math.max(0, typed - subjectLen))}
               cursor
-            />
-          ) : null}
-          {scene === 3 ? <SentMock /> : null}
+            />,
+            <SentMock key="sent" />,
+          ].map((content, i) => (
+            <div
+              key={i}
+              aria-hidden={i !== scene}
+              className={`col-start-1 row-start-1 [&>*]:h-full transition-all duration-500 ${
+                i === scene ? "opacity-100 translate-y-0" : "pointer-events-none opacity-0 translate-y-2"
+              }`}
+            >
+              {content}
+            </div>
+          ))}
+          <div aria-hidden className="invisible col-start-1 row-start-1">
+            <EmailMock />
+          </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
           {SCENES.map((s, i) => (

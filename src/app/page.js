@@ -109,6 +109,12 @@ export default function Home() {
             ) : null}
             <a
               href="#how-it-works"
+              onClick={(event) => {
+                // Glide down instead of jumping (instant for people who prefer reduced motion).
+                event.preventDefault();
+                const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+                document.getElementById("how-it-works")?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+              }}
               className="mt-10 inline-flex items-center gap-2 text-sm font-semibold text-zinc-400 hover:text-purple-300 transition"
             >
               See how it works <ArrowDown size={16} className="animate-bounce" />
