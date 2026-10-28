@@ -8,6 +8,7 @@ import { runState, wakeWorker } from "../../lib/jobpilotClient";
 import { trackedIndex } from "../../lib/jobs";
 import Loader from "../../components/Loader";
 import JobCard from "../../components/JobCard";
+import PublicJobs from "../../components/PublicJobs";
 
 const FRESH_DAYS = 15;
 const PAGE_SIZE = 30;
@@ -94,6 +95,17 @@ export default function JobsPage() {
       setLoading(false);
     };
     load();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        setUser(null);
+        setMine([]);
+        setTracked([]);
+        setResults([]);
+      }
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
   const index = useMemo(() => trackedIndex(tracked), [tracked]);
@@ -186,21 +198,7 @@ export default function JobsPage() {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="min-h-[calc(100svh-9rem)] bg-zinc-950 text-white px-6 flex items-center justify-center">
-        <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-          <h1 className="text-2xl font-bold">Sign in to see jobs for you!</h1>
-          <Link
-            href="/login?redirect=/jobs"
-            className="inline-block mt-6 rounded-xl bg-white px-4 py-2 text-black font-semibold hover:bg-purple-600 hover:text-white transition"
-          >
-            Go to Login
-          </Link>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return <PublicJobs />;
 
   const forYou = mine
     .filter((row) => ["strong", "possible"].includes(row.match_label) && !row.dismissed && isFresh(row))

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -28,6 +28,7 @@ export default function Navbar() {
   const [signingOut, setSigningOut] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const pathname = usePathname();
+  const router = useRouter();
   const rawDisplayName =
     user?.user_metadata?.full_name?.trim() ||
     user?.user_metadata?.name?.trim() ||
@@ -127,6 +128,8 @@ export default function Navbar() {
     setSigningOut(true);
     await supabase.auth.signOut();
     setShowSignOutConfirm(false);
+    // Nothing personal stays on screen: always continue on the public home page.
+    router.replace("/");
     setToastMessage("Signed out successfully");
     setSigningOut(false);
     setMobileOpen(false);
@@ -271,10 +274,18 @@ export default function Navbar() {
           </div>
         </>
       ) : (
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1 sm:gap-3">
+          <Link
+            href="/jobs"
+            className={`whitespace-nowrap rounded-lg px-2 sm:px-3 py-1.5 text-sm font-semibold transition hover:text-purple-300 ${
+              pathname === "/jobs" ? "text-purple-300" : "text-zinc-300"
+            }`}
+          >
+            Jobs
+          </Link>
           <Link
             href="/login"
-            className="whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold text-zinc-300 hover:text-purple-300 transition"
+            className="whitespace-nowrap rounded-lg px-2 sm:px-3 py-1.5 text-sm font-semibold text-zinc-300 hover:text-purple-300 transition"
           >
             Sign in
           </Link>

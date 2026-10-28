@@ -76,7 +76,12 @@ export default function Home() {
             I already have an account
           </Link>
         </div>
-        <p className="mt-3 text-sm text-zinc-500">Setup takes about five minutes.</p>
+        <p className="mt-3 text-sm text-zinc-500">
+          Setup takes about five minutes.{" "}
+          <Link href="/jobs" className="text-purple-300 hover:underline">
+            Or look at today&apos;s jobs first →
+          </Link>
+        </p>
       </section>
 
       <section className="mx-auto mt-16 max-w-5xl">

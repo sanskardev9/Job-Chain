@@ -20,7 +20,9 @@ function LoginPageContent() {
   const formRef = useRef(null);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get("redirect") || "/jobs";
+  // Only same-site paths: "/profile" yes, "https://other.site" or "//other.site" no.
+  const requested = searchParams.get("redirect") || "";
+  const redirectTo = requested.startsWith("/") && !requested.startsWith("//") ? requested : "/jobs";
   // /login?signup=1 opens the sign-up form directly ("Get started").
   useEffect(() => {
     if (searchParams.get("signup")) setShowSignup(true);

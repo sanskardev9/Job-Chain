@@ -663,3 +663,38 @@ alter table public.pipeline_runs drop constraint if exists pipeline_runs_kind_ch
 alter table public.pipeline_runs add constraint pipeline_runs_kind_check
   check (kind in ('search', 'send', 'draft', 'lookup'));
 
+-- Public preview of the Jobs page for visitors who are not signed in. Deliberately leaves out
+-- anything that leads to the posting outside JobChain: no link, company, email or description.
+create or replace function public.preview_jobs(p_query text default '', p_country text default '', p_limit int default 24)
+returns table (id text, title text, country text, location text, posted_at date, deadline date, has_email boolean)
+language sql stable security definer set search_path = public
+as $$
+  with q as (
+    select case when trim(coalesce(p_query, '')) = '' then null
+           else websearch_to_tsquery('simple', p_query) end as tsq
+  )
+  select md5(p.source_url), p.title, p.country, p.location, p.posted_at, p.deadline, p.has_email
+  from public.job_pool p, q
+  where coalesce(p.posted_at, p.fetched_at::date) >= current_date - 15
+    and (p.deadline is null or p.deadline >= current_date)
+    and (q.tsq is null or p.search @@ q.tsq)
+    and (coalesce(p_country, '') = '' or p.country ilike p_country)
+  order by case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end desc,
+           coalesce(p.posted_at, p.fetched_at::date) desc
+  limit least(greatest(p_limit, 1), 24);
+$$;
+revoke all on function public.preview_jobs(text, text, int) from public;
+grant execute on function public.preview_jobs(text, text, int) to anon, authenticated;
+
+-- Country list for the visitors' filter (only countries that have fresh jobs).
+create or replace function public.preview_countries()
+returns table (country text, jobs bigint)
+language sql stable security definer set search_path = public
+as $$
+  select p.country, count(*) from public.job_pool p
+  where p.country is not null and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 15
+    and (p.deadline is null or p.deadline >= current_date)
+  group by p.country order by count(*) desc;
+$$;
+revoke all on function public.preview_countries() from public;
+grant execute on function public.preview_countries() to anon, authenticated;
