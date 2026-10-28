@@ -562,3 +562,6 @@ create table if not exists public.job_pool_fetches (
 
 alter table public.job_pool enable row level security;
 alter table public.job_pool_fetches enable row level security;
+
+-- Date the source published the vacancy.
+alter table public.discovered_jobs add column if not exists posted_at date;

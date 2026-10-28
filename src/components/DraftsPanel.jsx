@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import Loader from "./Loader";
+import { jobDates } from "../lib/dates";
 
 const FILTERS = ["draft", "approved", "sent", "rejected", "failed"];
 const STATUS_STYLES = {
@@ -41,7 +42,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
         .from("application_drafts")
         .select(
           "id, recipient, recipient_evidence, subject, body, cv_filename, status, approved_at, sent_at, error, created_at, " +
-            "discovered_jobs(id, title, company, location, country, source, source_url, match_label, score, matched_skills, missing_skills, required_skills, nice_to_have_skills, blockers, unknowns, deadline)"
+            "discovered_jobs(id, title, company, location, country, source, source_url, match_label, score, matched_skills, missing_skills, required_skills, nice_to_have_skills, blockers, unknowns, deadline, posted_at)"
         )
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
@@ -234,7 +235,9 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
                         {job.match_label} match
                       </span>
                       {job.score != null ? <span className="text-zinc-500"> · score {job.score}</span> : null}
-                      {job.deadline ? <span className="text-zinc-500"> · apply by {job.deadline}</span> : null}
+                      {job.posted_at || job.deadline ? (
+                        <span className="text-zinc-500"> · {jobDates(job.posted_at, job.deadline)}</span>
+                      ) : null}
                     </p>
                   </div>
                   <span className={`rounded-full border px-3 py-1 text-xs font-semibold capitalize ${STATUS_STYLES[draft.status]}`}>

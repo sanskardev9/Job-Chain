@@ -7,6 +7,7 @@ import Loader from "../../components/Loader";
 import { LABEL_STYLES } from "../../components/DraftsPanel";
 import { BookmarkToggle, MoreMenu } from "../../components/CardControls";
 import { EMAIL_RE, requestDraft, runState, wakeWorker } from "../../lib/jobpilotClient";
+import { jobDates } from "../../lib/dates";
 
 const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 const HIDDEN_EMPLOYER = /^(siehe beschreibung|see description|confidential|vertraulich|anonym(ous)?)$/i;
@@ -35,7 +36,7 @@ export default function BookmarksPage() {
         .from("jobs")
         .select(
           "id, title, company, location, job_url, created_at, discovered_job_id, " +
-            "discovered_jobs(id, source, source_url, match_label, score, apply_email, required_skills, missing_skills, unknowns)"
+            "discovered_jobs(id, source, source_url, match_label, score, apply_email, required_skills, missing_skills, unknowns, posted_at, deadline)"
         )
         .eq("user_id", currentUser.id)
         .eq("is_saved", true)
@@ -178,6 +179,9 @@ export default function BookmarksPage() {
                   <p className="text-xs text-zinc-500">
                     {[row.location, job.source].filter(Boolean).join(" · ")}
                   </p>
+                  {job.posted_at || job.deadline ? (
+                    <p className="text-xs text-zinc-400">{jobDates(job.posted_at, job.deadline)}</p>
+                  ) : null}
                   {(job.required_skills || []).length ? (
                     <p className="mt-2 text-xs text-zinc-400">
                       <span className="text-zinc-500">Required: </span>

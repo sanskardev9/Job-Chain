@@ -7,6 +7,7 @@ import Loader from "../../components/Loader";
 import DraftsPanel, { LABEL_STYLES } from "../../components/DraftsPanel";
 import { BookmarkToggle, MoreMenu } from "../../components/CardControls";
 import { wakeWorker } from "../../lib/jobpilotClient";
+import { jobDates } from "../../lib/dates";
 
 const TABS = [
   { id: "activity", label: "Run & activity" },
@@ -177,7 +178,7 @@ export default function JobPilotPage() {
     const [{ data }, { data: tracked }] = await Promise.all([
       supabase
         .from("discovered_jobs")
-        .select("id, title, company, location, country, source, source_url, apply_url, match_label, score, blockers, unknowns, matched_skills, missing_skills, required_skills, nice_to_have_skills, apply_email, evaluated_at")
+        .select("id, title, company, location, country, source, source_url, apply_url, match_label, score, blockers, unknowns, matched_skills, missing_skills, required_skills, nice_to_have_skills, apply_email, evaluated_at, posted_at, deadline")
         .eq("user_id", currentUser.id)
         .eq("dismissed", false)
         .not("evaluated_at", "is", null)
@@ -677,6 +678,9 @@ export default function JobPilotPage() {
                     <p className="text-xs text-zinc-500">
                       {[job.location, job.country].filter(Boolean).join(", ")} · {job.source}
                     </p>
+                    {job.posted_at || job.deadline ? (
+                      <p className="text-xs text-zinc-400">{jobDates(job.posted_at, job.deadline)}</p>
+                    ) : null}
                     {(job.blockers || []).length ? (
                       <p className="mt-2 text-xs text-red-300">✕ {job.blockers.join(" · ")}</p>
                     ) : null}

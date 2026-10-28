@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth *)",
+      "Bash(gh secret *)",
+      "Bash(python3 - *)",
+      "Bash(grep -n 'join\\(\", \"\\)} · {job.source}' -B2 -A2 src/app/jobpilot/page.js)",
+      "Bash(grep -n 'apply by {job.deadline}\\\\|required_skills, nice_to_have_skills, blockers, unknowns, deadline' src/components/DraftsPanel.jsx)"
+    ],
+    "additionalDirectories": [
+      "/Users/sanskarsingh/ME_COde/jobchain-backend/jobpilot/discovery"
+    ]
+  }
+}
