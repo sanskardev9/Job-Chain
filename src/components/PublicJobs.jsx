@@ -107,7 +107,7 @@ export default function PublicJobs() {
             <h2 className="mt-3 text-2xl font-bold text-white">{shared.job.title}</h2>
             <p className="mt-1 text-sm text-zinc-400">
               {[shared.job.location, shared.job.country].filter(Boolean).join(", ")}
-              {jobDates(shared.job) ? ` · ${jobDates(shared.job)}` : ""}
+              {jobDates(shared.job.posted_at, shared.job.deadline) ? ` · ${jobDates(shared.job.posted_at, shared.job.deadline)}` : ""}
             </p>
             <ul className="mt-4 grid gap-2 text-sm text-zinc-300 sm:grid-cols-3">
               {[

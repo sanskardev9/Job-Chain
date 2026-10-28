@@ -623,7 +623,7 @@ export default function JobsPage() {
             {sharedJob.missing ? (
               <p className="text-sm text-zinc-400">This job is no longer open (jobs stay listed for a month after posting).</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2">
+              <div>
                 {card(mineByUrl.get(sharedJob.source_url) ? fromMine(mineByUrl.get(sharedJob.source_url)) : sharedJob)}
               </div>
             )}
