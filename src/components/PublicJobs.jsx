@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bookmark, Lock, Search } from "lucide-react";
+import { Bookmark, CheckCircle2, Lock, Search, Sparkles, X } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import { jobDates } from "../lib/dates";
 import Loader from "./Loader";
@@ -17,7 +17,8 @@ export default function PublicJobs() {
   const [countries, setCountries] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [prompt, setPrompt] = useState(false);
+  // { job, action } when a visitor tries to act on a job; null when closed.
+  const [prompt, setPrompt] = useState(null);
 
   const search = async (q = "", c = "") => {
     setLoading(true);
@@ -115,7 +116,7 @@ export default function PublicJobs() {
                 >
                   <button
                     type="button"
-                    onClick={() => setPrompt(true)}
+                    onClick={() => setPrompt({ job, action: "save" })}
                     aria-label="Bookmark job"
                     className="absolute top-0 right-0 text-zinc-400 hover:text-purple-400 transition"
                   >
@@ -133,14 +134,14 @@ export default function PublicJobs() {
                   <div className="mt-auto pt-3 flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setPrompt(true)}
+                      onClick={() => setPrompt({ job, action: "write" })}
                       className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition"
                     >
                       Write application
                     </button>
                     <button
                       type="button"
-                      onClick={() => setPrompt(true)}
+                      onClick={() => setPrompt({ job, action: "view" })}
                       className="whitespace-nowrap rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition"
                     >
                       View vacancy
@@ -153,36 +154,96 @@ export default function PublicJobs() {
         )}
       </div>
 
-      {prompt ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4" onClick={() => setPrompt(false)}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-xl"
-          >
-            <h3 className="text-lg font-bold text-white">This one could be yours</h3>
-            <p className="mt-2 text-sm text-zinc-400">
-              Create a free account to see the full posting and the company, check whether it fits your profile, and
-              send a tailored application with your CV from your own Gmail.
-            </p>
-            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
-              <Link
-                href="/login?redirect=/jobs"
-                className="whitespace-nowrap rounded-lg border border-zinc-700 px-4 py-2 text-center text-sm hover:border-zinc-500 transition"
-              >
-                I have an account
-              </Link>
-              <Link
-                href={SIGNUP}
-                className="whitespace-nowrap rounded-lg bg-white px-4 py-2 text-center text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition"
-              >
-                Get started, free
-              </Link>
+      {prompt ? <SignupPrompt {...prompt} onClose={() => setPrompt(null)} /> : null}
+    </div>
+  );
+}
+
+const HEADLINES = {
+  write: "Let JobPilot write this one for you",
+  view: "See the full job, and whether it fits you",
+  save: "Save it for later",
+};
+
+const UNLOCKS = [
+  "The company and the full job posting",
+  "An honest check against your skills, languages and visa needs",
+  "A tailored email with your CV, sent from your own Gmail",
+  "Bookmarks and one list of everything you applied to",
+];
+
+// Sign-up prompt for visitors, about the exact job they tried to open.
+function SignupPrompt({ job, action, onClose }) {
+  useEffect(() => {
+    const onKey = (event) => event.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const signup = `/login?signup=1&redirect=${encodeURIComponent("/jobs")}`;
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signup-prompt-title"
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md animate-[fadeUp_0.25s_ease-out] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl shadow-purple-900/30"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-white"
+        >
+          <X size={18} />
+        </button>
+
+        <div className="border-b border-zinc-800 bg-gradient-to-br from-purple-600/20 to-transparent px-6 pb-5 pt-6">
+          <p className="inline-flex items-center gap-1.5 rounded-full border border-purple-500/40 bg-purple-500/10 px-2.5 py-0.5 text-xs font-semibold text-purple-200">
+            <Sparkles size={12} /> Free account
+          </p>
+          <h3 id="signup-prompt-title" className="mt-3 pr-8 text-xl font-bold text-white">
+            {HEADLINES[action] || HEADLINES.view}
+          </h3>
+          {job ? (
+            <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950/70 px-3 py-2.5">
+              <p className="truncate text-sm font-semibold text-zinc-100">{job.title}</p>
+              <p className="truncate text-xs text-zinc-500">
+                {[job.location, job.country].filter(Boolean).join(", ")}
+                {job.has_email ? " · ⚡ Quick apply available" : ""}
+              </p>
             </div>
-          </div>
+          ) : null}
         </div>
-      ) : null}
+
+        <div className="px-6 py-5">
+          <p className="text-sm font-semibold text-zinc-300">Sign up to get</p>
+          <ul className="mt-3 space-y-2">
+            {UNLOCKS.map((item) => (
+              <li key={item} className="flex items-start gap-2.5 text-sm text-zinc-300">
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                {item}
+              </li>
+            ))}
+          </ul>
+
+          <Link
+            href={signup}
+            className="mt-6 block w-full rounded-xl bg-white px-4 py-3 text-center font-semibold text-black transition hover:bg-purple-600 hover:text-white"
+          >
+            Create free account
+          </Link>
+          <p className="mt-3 text-center text-sm text-zinc-500">
+            Already have one?{" "}
+            <Link href={`/login?redirect=${encodeURIComponent("/jobs")}`} className="font-semibold text-purple-300 hover:underline">
+              Sign in
+            </Link>
+          </p>
+          <p className="mt-4 text-center text-xs text-zinc-600">Takes about five minutes. No card, no spam.</p>
+        </div>
+      </div>
     </div>
   );
 }
