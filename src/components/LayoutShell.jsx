@@ -35,6 +35,11 @@ export default function LayoutShell({ children }) {
     return () => subscription.unsubscribe();
   }, [router]);
 
+  // Once Home is reached after signing out, private pages send visitors to Login again.
+  useEffect(() => {
+    if (pathname === "/") signedOut.current = false;
+  }, [pathname]);
+
   const blocked = isPrivate(pathname) && session === null;
 
   useEffect(() => {
