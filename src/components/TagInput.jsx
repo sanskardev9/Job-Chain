@@ -124,8 +124,13 @@ export default function TagInput({ value, onChange, suggestions = [], placeholde
             return (
               <li key={`${item}-${custom}`} role="option" aria-selected={index === active}
                 onMouseEnter={() => setActive(index)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => add(item)}
+                // Picked on press, not click: inside a <label> (form fields) the click is re-targeted to the
+                // input, so an onClick here never sees it.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  add(item);
+                }}
                 className={`flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${
                   index === active ? "bg-purple-500/15 text-white" : "text-zinc-200"
                 }`}>

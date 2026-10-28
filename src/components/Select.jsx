@@ -96,8 +96,12 @@ export default function Select({ options, value, onChange, placeholder = "Choose
                 role="option"
                 aria-selected={selected}
                 onMouseEnter={() => setActive(index)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pick(option)}
+                // Picked on press, not click: inside a <label> the click is re-targeted to the field.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  pick(option);
+                }}
                 className={`flex cursor-pointer items-start gap-3 rounded-lg px-3 py-2 transition ${
                   index === active ? "bg-purple-500/15" : ""
                 }`}

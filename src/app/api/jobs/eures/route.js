@@ -32,6 +32,10 @@ export async function GET(request) {
     educationAndQualificationLevelCodes: [], positionOfferingCodes: [], locationCodes: [], euresFlagCodes: [],
     otherBenefitsCodes: [], requiredLanguages: [], minNumberPost: null,
   };
+  // Ask EURES for the picked countries directly (like its own location filter); filtering a Europe-wide
+  // page afterwards buries a small country's jobs under everyone else's.
+  const codes = Object.entries(COUNTRIES).filter(([code, name]) => code !== "EL" && wanted.includes(name)).map(([code]) => code.toLowerCase());
+  body.locationCodes = codes;
   try {
     const response = await fetch(SEARCH_URL, {
       method: "POST",
