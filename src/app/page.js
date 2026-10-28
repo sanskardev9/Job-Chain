@@ -9,6 +9,7 @@ import {
 import { supabase } from "../lib/supabaseClient";
 import HeroDemo from "../components/landing/HeroDemo";
 import Reveal, { CountUp } from "../components/Reveal";
+import IntroScreen from "../components/IntroScreen";
 import EuFlag from "../components/EuFlag";
 import { BulkSendMock, EmailMock, MatchesMock, ProfileMock, SAMPLE_PERSONA, SentMock } from "../components/landing/Mockups";
 
@@ -233,6 +234,7 @@ export default function Home() {
 
   return (
     <div className="min-h-full overflow-x-hidden bg-zinc-950 text-white">
+      <IntroScreen />
       {/* Reading progress, just under the navbar. */}
       <div aria-hidden className="fixed inset-x-0 top-16 z-40 h-0.5 bg-transparent">
         <div className="h-full origin-left bg-gradient-to-r from-purple-500 via-fuchsia-400 to-purple-300 shadow-[0_0_10px_rgba(232,121,249,0.8)]"
