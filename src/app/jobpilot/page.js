@@ -241,9 +241,13 @@ export default function JobPilotPage() {
       .gt("id", lastEventId.current)
       .order("id", { ascending: true })
       .limit(500);
-    if (data?.length) {
-      lastEventId.current = data[data.length - 1].id;
-      setEvents((prev) => [...prev, ...data]);
+    if (data?.length && shownRunId.current === runId) {
+      lastEventId.current = Math.max(lastEventId.current, data[data.length - 1].id);
+      // Two loads can overlap (poll + live update) and fetch the same rows: add each event once.
+      setEvents((prev) => {
+        const seen = new Set(prev.map((e) => e.id));
+        return [...prev, ...data.filter((e) => !seen.has(e.id))];
+      });
     }
   }, []);
 

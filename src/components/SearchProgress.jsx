@@ -72,12 +72,13 @@ export default function SearchProgress({ status, step, events = [], startedAt, c
     .slice(-4)
     .reverse();
 
+  // In the order the steps fill them: sources first, then checking, then emails.
   const stats = [
+    { icon: CloudDownload, value: read, label: "new from job sources",
+      sub: stage >= 2 && !read ? "searched recently, used jobs already found" : "read in full right now" },
     { icon: FileSearch, value: scored.length, label: "jobs checked", sub: "against your profile" },
     { icon: Target, value: good, label: "worth applying", sub: "strong or possible" },
     { icon: Mail, value: drafted, label: "emails drafted", sub: good && !drafted && stage >= 2 ? "only for jobs that list an email" : null },
-    { icon: CloudDownload, value: read, label: "new from job sources",
-      sub: stage >= 2 && !read ? "searched recently, used jobs already found" : "read in full right now" },
   ];
 
   return (
