@@ -10,6 +10,7 @@ import { getSetupStatus, missingSetupText } from "../../lib/setup";
 import Loader from "../../components/Loader";
 import JobCard from "../../components/JobCard";
 import PublicJobs from "../../components/PublicJobs";
+import Select from "../../components/Select";
 
 const FRESH_DAYS = 15;
 const PAGE_SIZE = 30;
@@ -267,18 +268,14 @@ export default function JobsPage() {
               className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-3 pl-10 pr-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600"
             />
           </div>
-          <select
+          <Select
+            small
+            className="w-full sm:w-48"
+            label="Country"
             value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-600"
-          >
-            <option value="">All countries</option>
-            {countries.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+            onChange={setCountry}
+            options={[{ value: "", label: "All countries" }, ...countries.map((c) => ({ value: c, label: c }))]}
+          />
           <button
             type="submit"
             disabled={searching}

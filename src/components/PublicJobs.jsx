@@ -6,6 +6,7 @@ import { Bookmark, CheckCircle2, Lock, Search, Sparkles, X } from "lucide-react"
 import { supabase } from "../lib/supabaseClient";
 import { jobDates } from "../lib/dates";
 import Loader from "./Loader";
+import Select from "./Select";
 
 const SIGNUP = "/login?signup=1&redirect=/jobs";
 
@@ -64,18 +65,17 @@ export default function PublicJobs() {
               className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-3 pl-10 pr-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600"
             />
           </div>
-          <select
+          <Select
+            small
+            className="w-full sm:w-52"
+            label="Country"
             value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-600"
-          >
-            <option value="">All countries</option>
-            {countries.map((c) => (
-              <option key={c.country} value={c.country}>
-                {c.country} ({c.jobs})
-              </option>
-            ))}
-          </select>
+            onChange={setCountry}
+            options={[
+              { value: "", label: "All countries" },
+              ...countries.map((c) => ({ value: c.country, label: `${c.country} (${c.jobs})` })),
+            ]}
+          />
           <button
             type="submit"
             className="whitespace-nowrap rounded-xl bg-white px-5 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition"

@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 
-// Dark-themed dropdown for picking a language level. options: [{ value, label, hint }]
-export default function LevelSelect({ options, value, onChange, placeholder = "Choose your level" }) {
+// Dark-themed dropdown used instead of the browser's native <select>.
+// options: [{ value, label, hint? }]; className sizes the wrapper; small = compact filter style.
+export default function Select({ options, value, onChange, placeholder = "Choose…", className = "w-full", small = false, label }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const rootRef = useRef(null);
@@ -56,25 +57,26 @@ export default function LevelSelect({ options, value, onChange, placeholder = "C
   };
 
   return (
-    <div ref={rootRef} className="relative w-full sm:w-64 shrink-0">
+    <div ref={rootRef} className={`relative shrink-0 ${className}`}>
       <button
         type="button"
         onClick={toggle}
         onKeyDown={onKeyDown}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`flex h-full w-full items-center justify-between gap-2 rounded-xl border bg-zinc-950 px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-purple-600 ${
-          open ? "border-purple-500" : "border-zinc-700 hover:border-zinc-500"
-        }`}
+        aria-label={label}
+        className={`flex h-full w-full items-center justify-between gap-2 rounded-xl border text-left transition focus:outline-none focus:ring-2 focus:ring-purple-600 ${
+          small ? "bg-zinc-900 px-3 py-3 text-sm" : "bg-zinc-950 px-4 py-3"
+        } ${open ? "border-purple-500" : "border-zinc-700 hover:border-zinc-500"}`}
       >
         <span className="min-w-0">
           {chosen ? (
             <>
-              <span className="block truncate text-sm font-semibold text-white">{chosen.label}</span>
-              <span className="block truncate text-xs text-zinc-500">{chosen.hint}</span>
+              <span className={`block truncate text-white ${small ? "" : "text-sm font-semibold"}`}>{chosen.label}</span>
+              {chosen.hint && !small ? <span className="block truncate text-xs text-zinc-500">{chosen.hint}</span> : null}
             </>
           ) : (
-            <span className="text-zinc-500">{placeholder}</span>
+            <span className="block truncate text-zinc-500">{placeholder}</span>
           )}
         </span>
         <ChevronDown size={16} className={`shrink-0 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`} />
@@ -84,7 +86,7 @@ export default function LevelSelect({ options, value, onChange, placeholder = "C
         <ul
           ref={listRef}
           role="listbox"
-          className="absolute right-0 z-30 mt-2 max-h-80 w-full min-w-[17rem] overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl shadow-black/60"
+          className="absolute right-0 z-30 mt-2 max-h-80 w-full min-w-[14rem] overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl shadow-black/60"
         >
           {options.map((option, index) => {
             const selected = option.value === value;
@@ -101,10 +103,10 @@ export default function LevelSelect({ options, value, onChange, placeholder = "C
                 }`}
               >
                 <span className="min-w-0 flex-1">
-                  <span className={`block text-sm font-semibold ${selected ? "text-purple-200" : "text-white"}`}>
+                  <span className={`block text-sm ${option.hint ? "font-semibold" : ""} ${selected ? "text-purple-200" : "text-white"}`}>
                     {option.label}
                   </span>
-                  <span className="block text-xs text-zinc-400">{option.hint}</span>
+                  {option.hint ? <span className="block text-xs text-zinc-400">{option.hint}</span> : null}
                 </span>
                 {selected ? <Check size={16} className="mt-0.5 shrink-0 text-purple-300" /> : null}
               </li>

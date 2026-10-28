@@ -7,7 +7,8 @@ import { startGmailConnect } from "../../lib/gmailClient";
 import Loader from "../../components/Loader";
 import PdfModal from "../../components/PdfModal";
 import SetupGuide from "../../components/SetupGuide";
-import LevelSelect from "../../components/LevelSelect";
+import Select from "../../components/Select";
+import TagInput from "../../components/TagInput";
 import { parseCv, pdfText } from "../../lib/cvParse";
 import { wakeWorker } from "../../lib/jobpilotClient";
 import { useRouter } from "next/navigation";
@@ -21,6 +22,21 @@ const LANGUAGE_LEVELS = [
   { value: "C1", label: "C1 · Advanced", hint: "Fluent, close to native at work" },
   { value: "C2", label: "C2 · Proficient", hint: "Near-native in every situation" },
   { value: "Native", label: "Native", hint: "Your first language" },
+];
+// Countries the job sources cover; users can still type any other.
+const TARGET_COUNTRIES = [
+  "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Finland", "France",
+  "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania", "Luxembourg",
+  "Malta", "Netherlands", "Norway", "Poland", "Portugal", "Romania", "Slovakia", "Slovenia", "Spain", "Sweden",
+  "Switzerland",
+];
+const KEYWORD_SUGGESTIONS = [
+  "Frontend Developer", "React Developer", "JavaScript Developer", "Web Developer", "HTML/CSS Developer",
+  "Full Stack Developer", "Backend Developer", "Node.js Developer", "TypeScript Developer", "Angular Developer",
+  "Vue.js Developer", "Software Engineer", "Software Developer", "Python Developer", "Java Developer",
+  "PHP Developer", ".NET Developer", "Mobile Developer", "React Native Developer", "Android Developer", "iOS Developer",
+  "UI Developer", "UI/UX Designer", "DevOps Engineer", "Cloud Engineer", "QA Engineer", "Test Automation Engineer",
+  "Data Analyst", "Data Engineer", "Data Scientist", "Machine Learning Engineer", "Junior Developer",
 ];
 const SEND_MODES = [
   { value: "dry_run", label: "Dry run", hint: "Find and score jobs, draft emails, never send." },
@@ -716,7 +732,8 @@ export default function ProfilePage() {
                 <div key={index} className="flex flex-col gap-2 sm:flex-row">
                   <input className={inputClass} value={item.language} placeholder="English"
                     onChange={(e) => setLanguage(index, "language", e.target.value)} />
-                  <LevelSelect options={LANGUAGE_LEVELS} value={item.level || ""}
+                  <Select options={LANGUAGE_LEVELS} value={item.level || ""} placeholder="Choose your level"
+                    className="w-full sm:w-64" label="Language level"
                     onChange={(level) => setLanguage(index, "level", level)} />
                   <button type="button"
                     onClick={() => setField("languages", form.languages.filter((_, i) => i !== index))}
@@ -745,22 +762,22 @@ export default function ProfilePage() {
             </p>
           </div>
           <Field label="Do you need visa / work-permit sponsorship?" tag={tagFor("needs_sponsorship")}>
-            <select className={inputClass} value={form.needs_sponsorship}
-              onChange={(e) => setField("needs_sponsorship", e.target.value)}>
-              <option value="">Not set</option>
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
+            <Select value={form.needs_sponsorship} placeholder="Choose yes or no" label="Visa sponsorship"
+              onChange={(value) => setField("needs_sponsorship", value)}
+              options={[
+                { value: "true", label: "Yes, I need sponsorship", hint: "Emails will ask if the company can sponsor a visa" },
+                { value: "false", label: "No, I can already work there", hint: "e.g. EU citizen or existing work permit" },
+              ]} />
           </Field>
-          <Field label="Target countries" hint="Comma separated. Empty means all of Europe." tag={tagFor("target_countries", false)}>
-            <input className={inputClass} value={form.target_countries}
-              placeholder="Germany, Netherlands, Ireland"
-              onChange={(e) => setField("target_countries", e.target.value)} />
+          <Field label="Target countries" hint="Pick from the list or type a country and press Enter. Leave empty to search all of Europe." tag={tagFor("target_countries", false)}>
+            <TagInput value={form.target_countries} suggestions={TARGET_COUNTRIES} label="Target countries"
+              placeholder="Search countries, e.g. Germany"
+              onChange={(value) => setField("target_countries", value)} />
           </Field>
-          <Field label="Search keywords" hint="Comma separated. Empty uses JobPilot's frontend defaults.">
-            <input className={inputClass} value={form.keywords}
-              placeholder="Frontend Developer, React Developer"
-              onChange={(e) => setField("keywords", e.target.value)} />
+          <Field label="Job titles to search for" hint="Pick from the list or type your own and press Enter. Leave empty to use frontend developer titles.">
+            <TagInput value={form.keywords} suggestions={KEYWORD_SUGGESTIONS} label="Job titles"
+              placeholder="Search titles, e.g. React Developer"
+              onChange={(value) => setField("keywords", value)} />
           </Field>
         </section>
 
