@@ -48,7 +48,7 @@ export default function Home() {
         </p>
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
-            href="/jobpilot"
+            href="/jobs"
             className="w-full sm:w-auto rounded-xl bg-white px-6 py-3 font-semibold text-black shadow-md transition duration-200 hover:scale-105 hover:bg-purple-600 hover:text-white"
           >
             Let the hunt begin

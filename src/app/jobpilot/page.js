@@ -4,14 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
-import DraftsPanel, { LABEL_STYLES } from "../../components/DraftsPanel";
-import { BookmarkToggle, MoreMenu } from "../../components/CardControls";
+import DraftsPanel from "../../components/DraftsPanel";
 import { wakeWorker } from "../../lib/jobpilotClient";
-import { jobDates } from "../../lib/dates";
 
 const TABS = [
   { id: "activity", label: "Run & activity" },
-  { id: "jobs", label: "Found jobs" },
   { id: "drafts", label: "Drafts" },
 ];
 const ACTIVE = ["queued", "running"];
@@ -36,25 +33,6 @@ const EVENT_STYLES = {
   drafted: "text-purple-300",
   summary: "text-white font-semibold",
   step: "text-blue-300 font-semibold",
-};
-
-// Job boards' "employer hidden" placeholders: never use them to match or display as a company.
-const HIDDEN_EMPLOYER = /^(siehe beschreibung|see description|confidential|vertraulich|anonym(ous)?|nicht eingegeben|keine angabe|n\/a|-|unknown)$/i;
-const isHiddenEmployer = (company) => !company || HIDDEN_EMPLOYER.test(company.trim());
-const companyName = (company) => (isHiddenEmployer(company) ? "Employer not named" : company);
-
-// Same job reposted (other source/URL): compare company + title without gender tags or legal suffixes.
-// Null when the employer is hidden, since unrelated jobs then share the same "company".
-const jobKey = (job) => {
-  if (isHiddenEmployer(job.company)) return null;
-  const clean = (text) =>
-    (text || "")
-      .toLowerCase()
-      .replace(/\([^)]*\)/g, " ")
-      .replace(/\b(gmbh|ag|se|kg|b\.?v\.?|ltd|inc|llc|deutschland|germany)\b/g, " ")
-      .replace(/[^a-z0-9äöüß]+/g, " ")
-      .trim();
-  return `${clean(job.company)}|${clean(job.title)}`;
 };
 
 const time = (value) =>
@@ -95,17 +73,6 @@ export default function JobPilotPage() {
   const [setup, setSetup] = useState(null);
   const [runs, setRuns] = useState([]);
   const [events, setEvents] = useState([]);
-  const [jobs, setJobs] = useState([]);
-  const [jobFilter, setJobFilter] = useState("all");
-  const [appliedJobs, setAppliedJobs] = useState([]);
-  // Bookmarked found jobs (rows in `jobs` with is_saved), shown on the Bookmarks page.
-  const [savedRows, setSavedRows] = useState([]);
-  const [savingId, setSavingId] = useState("");
-  // Opened from Bookmarks: show this job first and highlighted.
-  const [focusJobId, setFocusJobId] = useState("");
-  const [markingId, setMarkingId] = useState("");
-  // Job id -> recipient typed for jobs whose posting lists no email.
-  const [recipientDrafts, setRecipientDrafts] = useState({});
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState("");
   const [draftsKey, setDraftsKey] = useState(0);
@@ -174,34 +141,14 @@ export default function JobPilotPage() {
     }
   }, []);
 
-  const loadJobs = useCallback(async (currentUser) => {
-    const [{ data }, { data: tracked }] = await Promise.all([
-      supabase
-        .from("discovered_jobs")
-        .select("id, title, company, location, country, source, source_url, apply_url, match_label, score, blockers, unknowns, matched_skills, missing_skills, required_skills, nice_to_have_skills, apply_email, evaluated_at, posted_at, deadline")
-        .eq("user_id", currentUser.id)
-        .eq("dismissed", false)
-        .not("evaluated_at", "is", null)
-        .order("evaluated_at", { ascending: false })
-        .limit(300),
-      supabase
-        .from("jobs")
-        .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via, is_saved")
-        .eq("user_id", currentUser.id)
-        .or("applied_at.not.is.null,is_saved.eq.true"),
-    ]);
-    setJobs(data || []);
-    setAppliedJobs((tracked || []).filter((row) => row.applied_at));
-    setSavedRows((tracked || []).filter((row) => row.is_saved && row.discovered_job_id));
-  }, []);
-
   useEffect(() => {
     const init = async () => {
       const params = new URLSearchParams(window.location.search);
       if (TABS.some((t) => t.id === params.get("tab"))) setTab(params.get("tab"));
-      if (params.get("job")) {
-        setTab("jobs");
-        setFocusJobId(params.get("job"));
+      // Old links to a found job now open the Jobs page.
+      if (params.get("job") || params.get("tab") === "jobs") {
+        window.location.replace("/jobs");
+        return;
       }
 
       const {
@@ -213,11 +160,11 @@ export default function JobPilotPage() {
         return;
       }
       const run = await loadRuns(currentUser);
-      await Promise.all([loadSetup(currentUser), loadEvents(run?.id), loadJobs(currentUser)]);
+      await Promise.all([loadSetup(currentUser), loadEvents(run?.id)]);
       setLoading(false);
     };
     init();
-  }, [loadRuns, loadSetup, loadEvents, loadJobs]);
+  }, [loadRuns, loadSetup, loadEvents]);
 
   // Live updates while a run is queued/running; one last refresh when it ends.
   useEffect(() => {
@@ -226,13 +173,13 @@ export default function JobPilotPage() {
       const run = await loadRuns(user);
       await loadEvents(run?.id);
       if (!run || !ACTIVE.includes(run.status)) {
-        await Promise.all([loadSetup(user), loadJobs(user)]);
+        await loadSetup(user);
         setDraftsKey((k) => k + 1);
         if (run?.kind === "draft" && run.status === "finished") setTab("drafts");
       }
     }, POLL_MS);
     return () => clearInterval(timer);
-  }, [user, running, loadRuns, loadEvents, loadSetup, loadJobs]);
+  }, [user, running, loadRuns, loadEvents, loadSetup]);
 
   // Keep a sleeping hosted worker awake for as long as a run is queued or running.
   useEffect(() => {
@@ -285,84 +232,12 @@ export default function JobPilotPage() {
     return !error;
   };
 
-  // "Write application" on a found job: the worker drafts it, then it appears in Drafts.
-  const writeApplication = async (job) => {
-    const recipient = (recipientDrafts[job.id] || "").trim();
-    if (!job.apply_email && !/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(recipient)) {
-      setRecipientDrafts((prev) => ({ ...prev, [job.id]: prev[job.id] ?? "" }));
-      return;
-    }
-    await startRun("draft", { discovered_job_id: job.id, ...(recipient ? { recipient } : {}) });
-  };
-
   const stopRun = async () => {
     setBusy(true);
     const { error } = await supabase.from("pipeline_runs").update({ status: "cancelled" }).eq("id", latestRun.id);
     if (error) setActionError(error.message);
     await loadRuns(user);
     setBusy(false);
-  };
-
-  const dismissJob = async (jobId) => {
-    const { error } = await supabase.from("discovered_jobs").update({ dismissed: true }).eq("id", jobId);
-    if (!error) setJobs((prev) => prev.filter((j) => j.id !== jobId));
-  };
-
-  // For jobs applied to outside JobPilot: records it in Applied so it is never drafted or sent again.
-  const markApplied = async (job) => {
-    setMarkingId(job.id);
-    const savedRow = savedRows.find((row) => row.discovered_job_id === job.id);
-    const appliedFields = { status: "applied", applied_at: new Date().toISOString(), applied_via: "manual", is_saved: false };
-    const query = savedRow
-      ? supabase.from("jobs").update(appliedFields).eq("id", savedRow.id)
-      : supabase.from("jobs").insert({
-        user_id: user.id,
-        title: job.title,
-        company: job.company,
-        location: [job.location, job.country].filter(Boolean).join(", ") || null,
-        job_url: job.apply_url || job.source_url,
-        status: "applied",
-        applied_at: new Date().toISOString(),
-        applied_via: "manual",
-        discovered_job_id: job.id,
-      });
-    const { data, error } = await query
-      .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via, is_saved")
-      .single();
-    if (error) {
-      console.error("Failed to mark as applied", error);
-    } else {
-      setAppliedJobs((prev) => [...prev, data]);
-      setSavedRows((prev) => prev.filter((row) => row.discovered_job_id !== job.id));
-    }
-    setMarkingId("");
-  };
-
-  const toggleSaved = async (job) => {
-    setSavingId(job.id);
-    const savedRow = savedRows.find((row) => row.discovered_job_id === job.id);
-    if (savedRow) {
-      const { error } = await supabase.from("jobs").delete().eq("id", savedRow.id).is("applied_at", null);
-      if (!error) setSavedRows((prev) => prev.filter((row) => row.id !== savedRow.id));
-    } else {
-      const { data, error } = await supabase
-        .from("jobs")
-        .insert({
-          user_id: user.id,
-          title: job.title,
-          company: job.company,
-          location: [job.location, job.country].filter(Boolean).join(", ") || null,
-          job_url: job.apply_url || job.source_url,
-          is_saved: true,
-          discovered_job_id: job.id,
-        })
-        .select("id, discovered_job_id, job_url, title, company, applied_at, applied_via, is_saved")
-        .single();
-      if (error) console.error("Failed to save job", error);
-      else setSavedRows((prev) => [...prev, data]);
-    }
-    setSavingId("");
-    window.dispatchEvent(new CustomEvent("jobchain:bookmarks-updated", { detail: { delta: savedRow ? -1 : 1 } }));
   };
 
   if (loading) {
@@ -401,15 +276,6 @@ export default function JobPilotPage() {
         : setup?.approved === 0
         ? "Approve drafts in the Drafts tab first"
         : `Sends up to ${profile.max_sends_per_run} approved email(s)`;
-  const appliedById = new Map(appliedJobs.filter((a) => a.discovered_job_id).map((a) => [a.discovered_job_id, a]));
-  const appliedByUrl = new Map(appliedJobs.filter((a) => a.job_url).map((a) => [a.job_url, a]));
-  const appliedByKey = new Map(appliedJobs.map((a) => [jobKey(a), a]).filter(([key]) => key));
-  const appliedFor = (job) =>
-    appliedById.get(job.id) ||
-    appliedByUrl.get(job.source_url) ||
-    appliedByUrl.get(job.apply_url) ||
-    (jobKey(job) && appliedByKey.get(jobKey(job))) ||
-    null;
   const sendBlockedReason = !setup?.gmail
     ? "connect Gmail in Profile"
     : profile?.send_mode !== "review"
@@ -417,19 +283,6 @@ export default function JobPilotPage() {
       : !setup?.workerSending && setup?.workerOnline
         ? "sending is switched off on the worker"
         : null;
-  const jobCounts = ["strong", "possible", "unlikely"].reduce(
-    (acc, label) => ({ ...acc, [label]: jobs.filter((j) => j.match_label === label && !appliedFor(j)).length }),
-    { applied: jobs.filter((j) => appliedFor(j)).length }
-  );
-  const filteredJobs =
-    jobFilter === "all"
-      ? jobs
-      : jobFilter === "applied"
-        ? jobs.filter((j) => appliedFor(j))
-        : jobs.filter((j) => j.match_label === jobFilter && !appliedFor(j));
-  const focusedJob = focusJobId ? jobs.find((j) => j.id === focusJobId) : null;
-  const visibleJobs = focusedJob ? [focusedJob, ...filteredJobs.filter((j) => j.id !== focusJobId)] : filteredJobs;
-
   return (
     <div className="min-h-full bg-zinc-950 px-4 sm:px-6 text-white pb-6">
       <div className="flex flex-col items-center justify-center w-content">
@@ -510,6 +363,12 @@ export default function JobPilotPage() {
                   >
                     Send approved ({setup?.approved || 0})
                   </button>
+                  <Link
+                    href="/jobs"
+                    className="whitespace-nowrap rounded-xl border border-zinc-700 px-4 py-2.5 font-semibold hover:border-purple-500 hover:text-purple-300 transition"
+                  >
+                    See my matches →
+                  </Link>
                 </>
               )}
             </div>
@@ -565,7 +424,6 @@ export default function JobPilotPage() {
             >
               {t.label}
               {t.id === "drafts" && setup?.toReview ? ` (${setup.toReview})` : ""}
-              {t.id === "jobs" && jobs.length ? ` (${jobs.length})` : ""}
             </button>
           ))}
         </div>
@@ -610,7 +468,7 @@ export default function JobPilotPage() {
                   {runs.map((run) => (
                     <li key={run.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
                       <button type="button" onClick={() => loadEvents(run.id)} className="text-left hover:text-purple-300">
-                        <span className="font-semibold">{run.kind === "send" ? "Send approved" : "Find jobs"}</span>
+                        <span className="font-semibold">{{ send: "Send approved", draft: "Write application", lookup: `Live search${run.query ? ` “${run.query}”` : ""}` }[run.kind] || "Find jobs"}</span>
                         <span className="text-zinc-500"> · {dateTime(run.requested_at)}</span>
                         {run.counts?.drafted != null ? <span className="text-zinc-400"> · {run.counts.drafted} drafted</span> : null}
                         {run.counts?.sent != null ? <span className="text-zinc-400"> · {run.counts.sent} sent</span> : null}
@@ -623,136 +481,6 @@ export default function JobPilotPage() {
               <p className="mt-2 text-xs text-zinc-500">Click a run to show its log.</p>
             </section>
           </div>
-        ) : null}
-
-        {tab === "jobs" ? (
-          <section>
-            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
-              {["all", "strong", "possible", "unlikely", "applied"].map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  onClick={() => setJobFilter(f)}
-                  className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${
-                    jobFilter === f
-                      ? "border-purple-500 text-purple-300 bg-purple-500/10"
-                      : "border-zinc-700 text-zinc-300 hover:border-purple-500 hover:text-purple-300"
-                  }`}
-                >
-                  {f} ({f === "all" ? jobs.length : jobCounts[f]})
-                </button>
-              ))}
-            </div>
-            {visibleJobs.length === 0 ? (
-              <div className="mt-6 rounded-2xl text-center border border-zinc-800 bg-zinc-900 p-8 text-zinc-400">
-                No jobs here yet. Click “Find jobs now”.
-              </div>
-            ) : (
-              <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                {visibleJobs.map((job) => {
-                  const applied = appliedFor(job);
-                  const saved = savedRows.some((row) => row.discovered_job_id === job.id);
-                  return (
-                  <div key={job.id} className={`relative flex flex-col rounded-2xl border p-5 ${
-                    job.id === focusJobId ? "border-purple-500 ring-1 ring-purple-500/60 bg-zinc-900"
-                      : applied ? "border-emerald-500/30 bg-zinc-900/60" : "border-zinc-800 bg-zinc-900"
-                  } shadow-lg hover:shadow-purple-800/40 transition-shadow duration-300`}>
-                    {!applied ? (
-                      <BookmarkToggle saved={saved} disabled={savingId === job.id} onToggle={() => toggleSaved(job)} />
-                    ) : null}
-                    <div className="flex items-start justify-between gap-3 pr-10">
-                      <h3 className="font-semibold break-words">{job.title}</h3>
-                      <span className={`shrink-0 text-xs font-semibold capitalize ${LABEL_STYLES[job.match_label] || ""}`}>
-                        {job.match_label} · {job.score}
-                      </span>
-                    </div>
-                    {applied ? (
-                      <p className="mt-1 inline-flex w-fit items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300">
-                        ✓ Applied {new Date(applied.applied_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
-                        {applied.applied_via === "email" ? " via JobPilot" : ""}
-                      </p>
-                    ) : null}
-                    <p className={`text-sm ${isHiddenEmployer(job.company) ? "italic text-zinc-500" : "text-zinc-300"}`}>
-                      {companyName(job.company)}
-                    </p>
-                    <p className="text-xs text-zinc-500">
-                      {[job.location, job.country].filter(Boolean).join(", ")} · {job.source}
-                    </p>
-                    {job.posted_at || job.deadline ? (
-                      <p className="text-xs text-zinc-400">{jobDates(job.posted_at, job.deadline)}</p>
-                    ) : null}
-                    {(job.blockers || []).length ? (
-                      <p className="mt-2 text-xs text-red-300">✕ {job.blockers.join(" · ")}</p>
-                    ) : null}
-                    {(job.unknowns || []).length ? (
-                      <p className="mt-1 text-xs text-yellow-300/90">? {job.unknowns.join(" · ")}</p>
-                    ) : null}
-                    {(job.required_skills || []).length ? (
-                      <p className="mt-2 text-xs text-zinc-400">
-                        <span className="text-zinc-500">Required: </span>
-                        {job.required_skills.map((skill, i) => {
-                          const missing = (job.missing_skills || []).includes(skill);
-                          return (
-                            <span key={skill}>
-                              {i ? ", " : ""}
-                              <span className={missing ? "text-red-300/90" : "text-emerald-300/90"}>{skill}</span>
-                            </span>
-                          );
-                        })}
-                      </p>
-                    ) : null}
-                    {(job.nice_to_have_skills || []).length ? (
-                      <p className="mt-1 text-xs text-zinc-400">
-                        <span className="text-zinc-500">Nice to have: </span>{job.nice_to_have_skills.join(", ")}
-                      </p>
-                    ) : null}
-                    {(job.matched_skills || []).length ? (
-                      <p className="mt-1 text-xs text-emerald-300/90">✓ You have: {job.matched_skills.join(", ")}</p>
-                    ) : null}
-                    <p className="mt-2 text-xs text-zinc-500">
-                      {job.apply_email ? `Apply by email: ${job.apply_email}` : "No application email listed: apply on the vacancy page"}
-                    </p>
-                    {!applied && !job.apply_email && recipientDrafts[job.id] !== undefined ? (
-                      <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-                        <label className="block text-xs text-zinc-400" htmlFor={`recipient-${job.id}`}>
-                          This posting lists no email. Paste the application email from the vacancy page:
-                        </label>
-                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                          <input id={`recipient-${job.id}`} type="email" placeholder="jobs@company.com"
-                            value={recipientDrafts[job.id]}
-                            onChange={(e) => setRecipientDrafts((prev) => ({ ...prev, [job.id]: e.target.value }))}
-                            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-600" />
-                          <button type="button" onClick={() => writeApplication(job)}
-                            disabled={busy || running || !/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test((recipientDrafts[job.id] || "").trim())}
-                            className="whitespace-nowrap rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50">
-                            Write it
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                    <div className="mt-auto pt-3 flex items-center gap-2">
-                      {!applied ? (
-                        <button type="button" onClick={() => writeApplication(job)} disabled={busy || running}
-                          title={running ? "Wait for the current run to finish" : "JobPilot writes a tailored email you can review"}
-                          className="whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50">
-                          Write application
-                        </button>
-                      ) : null}
-                      <a href={job.source_url} target="_blank" rel="noopener noreferrer"
-                        className="whitespace-nowrap rounded-lg bg-zinc-800 px-3 py-1.5 text-sm font-semibold hover:bg-purple-600 transition">
-                        View vacancy
-                      </a>
-                      <MoreMenu disabled={markingId === job.id} items={[
-                        ...(!applied ? [{ label: "Mark as applied", tone: "success", onClick: () => markApplied(job) }] : []),
-                        { label: "Dismiss", tone: "danger", onClick: () => dismissJob(job.id) },
-                      ]} />
-                    </div>
-                  </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
         ) : null}
 
         {tab === "drafts" ? (

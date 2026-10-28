@@ -196,7 +196,7 @@ export default function BookmarksPage() {
                     </p>
                   ) : null}
                   <p className="mt-2 text-xs text-zinc-500">
-                    {job.apply_email ? `Apply by email: ${job.apply_email}` : "No application email listed: apply on the vacancy page"}
+                    {job.apply_email ? "✉ Email application available" : "No application email listed: apply on the vacancy page"}
                   </p>
                   {!job.apply_email && emails[row.id] !== undefined && !write?.runId ? (
                     <div className="mt-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3">

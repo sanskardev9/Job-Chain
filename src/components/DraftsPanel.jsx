@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import Loader from "./Loader";
+import TypingDraft, { markTyped, shouldType } from "./TypingDraft";
 import { jobDates } from "../lib/dates";
 
 const FILTERS = ["draft", "approved", "sent", "rejected", "failed"];
@@ -35,6 +36,8 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
   const [selected, setSelected] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState("");
+  // Draft ids currently playing the typing effect.
+  const [typing, setTyping] = useState([]);
 
   useEffect(() => {
     const loadDrafts = async () => {
@@ -55,11 +58,18 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
         const dirty = Object.fromEntries(prev.filter((d) => d.dirty).map((d) => [d.id, d]));
         return (data || []).map((d) => dirty[d.id] || d);
       });
+      const fresh = (data || []).filter(shouldType).map((d) => d.id);
+      if (fresh.length) {
+        fresh.forEach(markTyped);
+        setTyping((prev) => [...new Set([...prev, ...fresh])]);
+      }
       setLoading(false);
     };
 
     loadDrafts();
   }, [user.id, refreshKey]);
+
+  const finishTyping = useCallback((id) => setTyping((prev) => prev.filter((x) => x !== id)), []);
 
   const setDraftField = (id, name, value) =>
     setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, [name]: value, dirty: true } : d)));
@@ -271,18 +281,29 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
                     <span className="text-zinc-500">To:</span> {draft.recipient}
                     <span className="block text-xs text-zinc-500">Found in: {draft.recipient_evidence}</span>
                   </p>
-                  <input
-                    className={inputClass}
-                    value={draft.subject}
-                    disabled={!editable || busy}
-                    onChange={(e) => setDraftField(draft.id, "subject", e.target.value)}
-                  />
-                  <textarea
-                    className={`${inputClass} min-h-72 font-mono text-sm leading-relaxed`}
-                    value={draft.body}
-                    disabled={!editable || busy}
-                    onChange={(e) => setDraftField(draft.id, "body", e.target.value)}
-                  />
+                  {typing.includes(draft.id) ? (
+                    <TypingDraft
+                      subject={draft.subject}
+                      body={draft.body}
+                      inputClass={inputClass}
+                      onDone={() => finishTyping(draft.id)}
+                    />
+                  ) : (
+                    <>
+                      <input
+                        className={inputClass}
+                        value={draft.subject}
+                        disabled={!editable || busy}
+                        onChange={(e) => setDraftField(draft.id, "subject", e.target.value)}
+                      />
+                      <textarea
+                        className={`${inputClass} min-h-72 font-mono text-sm leading-relaxed`}
+                        value={draft.body}
+                        disabled={!editable || busy}
+                        onChange={(e) => setDraftField(draft.id, "body", e.target.value)}
+                      />
+                    </>
+                  )}
                   <p className="text-xs text-zinc-500">Attachment: {draft.cv_filename || "CV.pdf"}</p>
                 </div>
 

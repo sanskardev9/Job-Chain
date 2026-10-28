@@ -156,6 +156,14 @@ export default function Navbar() {
           </li>
           <li>
             <Link
+              href="/jobs"
+              className="hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
+            >
+              Jobs
+            </Link>
+          </li>
+          <li>
+            <Link
               href="/bookmarks"
               className="relative inline-flex hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
             >
@@ -269,6 +277,19 @@ export default function Navbar() {
                 }`}
               >
                 Home
+              </Link>
+            </li>
+            <li className="w-full">
+              <Link
+                href="/jobs"
+                onClick={() => setMobileOpen(false)}
+                className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
+                  pathname === "/jobs"
+                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
+                    : "text-white"
+                }`}
+              >
+                Jobs
               </Link>
             </li>
             <li className="w-full">

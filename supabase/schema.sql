@@ -565,3 +565,101 @@ alter table public.job_pool_fetches enable row level security;
 
 -- Date the source published the vacancy.
 alter table public.discovered_jobs add column if not exists posted_at date;
+
+-- ---------------------------------------------------------------------------
+-- Jobs page: searchable shared pool, search_jobs(), adopt_pool_job(), lookup runs.
+-- ---------------------------------------------------------------------------
+-- Searchable columns on the shared pool (written by the worker; backfilled here once).
+alter table public.job_pool
+  add column if not exists title text,
+  add column if not exists company text,
+  add column if not exists country text,
+  add column if not exists location text,
+  add column if not exists posted_at date,
+  add column if not exists deadline date,
+  add column if not exists has_email boolean not null default false;
+
+update public.job_pool p set
+  title = data->>'title',
+  company = data->>'company',
+  country = data->>'country',
+  location = data->>'location',
+  has_email = coalesce(data->'structured'->>'contact_email', '') <> '',
+  deadline = case when (data->'structured'->>'deadline') ~ '^\d{4}-\d{2}-\d{2}$' then (data->'structured'->>'deadline')::date end,
+  posted_at = coalesce(
+    case when (data->>'posted_at') ~ '^\d{4}-\d{2}-\d{2}$' then (data->>'posted_at')::date end,
+    (select d.posted_at from public.discovered_jobs d where d.source_url = p.source_url and d.posted_at is not null limit 1))
+where title is null or posted_at is null;
+
+alter table public.job_pool add column if not exists search tsvector
+  generated always as (to_tsvector('simple',
+    coalesce(data->>'title', '') || ' ' || coalesce(data->>'company', '') || ' ' ||
+    coalesce(data->>'location', '') || ' ' || coalesce(data->>'country', '') || ' ' ||
+    left(coalesce(data->>'description', ''), 4000))) stored;
+create index if not exists job_pool_search_idx on public.job_pool using gin (search);
+create index if not exists job_pool_posted_idx on public.job_pool (posted_at desc);
+
+-- Search the shared pool: fresh jobs only (posted in the last 15 days, deadline not passed).
+-- Returns public job-ad fields; the recruiter's email stays hidden (only has_email).
+create or replace function public.search_jobs(p_query text default '', p_country text default '',
+                                              p_limit int default 30, p_offset int default 0)
+returns table (source_url text, source text, title text, company text, country text, location text,
+               posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public
+as $$
+  with q as (
+    select case when trim(coalesce(p_query, '')) = '' then null
+           else websearch_to_tsquery('simple', p_query) end as tsq
+  )
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220),
+         case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end
+  from public.job_pool p, q
+  where auth.uid() is not null
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 15
+    and (p.deadline is null or p.deadline >= current_date)
+    and (q.tsq is null or p.search @@ q.tsq)
+    and (coalesce(p_country, '') = '' or p.country ilike p_country)
+  order by case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end desc,
+           coalesce(p.posted_at, p.fetched_at::date) desc
+  limit least(greatest(p_limit, 1), 60) offset greatest(p_offset, 0);
+$$;
+revoke all on function public.search_jobs(text, text, int, int) from public, anon;
+grant execute on function public.search_jobs(text, text, int, int) to authenticated;
+
+-- Adds a pool job to the caller's own jobs (to bookmark, mark applied or write an application).
+create or replace function public.adopt_pool_job(p_source_url text)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  job_id uuid;
+  d jsonb;
+begin
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  select id into job_id from discovered_jobs where user_id = auth.uid() and source_url = p_source_url;
+  if job_id is not null then return job_id; end if;
+  select data into d from job_pool where source_url = p_source_url;
+  if d is null then raise exception 'job not found'; end if;
+  insert into discovered_jobs (user_id, source, source_url, vacancy_id, title, company, country, location,
+                               work_mode, contract_type, description, apply_url, content_hash, posted_at,
+                               deadline, apply_email, apply_email_evidence, contact_name)
+  values (auth.uid(), d->>'source', p_source_url, d->>'vacancy_id', d->>'title', d->>'company', d->>'country',
+          d->>'location', nullif(d->>'work_mode', ''), d->>'contract_type', d->>'description', d->>'apply_url',
+          d->>'content_hash',
+          case when (d->>'posted_at') ~ '^\d{4}-\d{2}-\d{2}$' then (d->>'posted_at')::date end,
+          case when (d->'structured'->>'deadline') ~ '^\d{4}-\d{2}-\d{2}$' then (d->'structured'->>'deadline')::date end,
+          d->'structured'->>'contact_email', d->'structured'->>'contact_evidence', d->'structured'->>'contact_name')
+  returning id into job_id;
+  return job_id;
+end;
+$$;
+revoke all on function public.adopt_pool_job(text) from public, anon;
+grant execute on function public.adopt_pool_job(text) to authenticated;
+
+-- "lookup" runs fetch one search query live when the pool has too few results.
+alter table public.pipeline_runs add column if not exists query text;
+alter table public.pipeline_runs drop constraint if exists pipeline_runs_kind_check;
+alter table public.pipeline_runs add constraint pipeline_runs_kind_check
+  check (kind in ('search', 'send', 'draft', 'lookup'));
+
