@@ -286,7 +286,7 @@ export default function Navbar() {
           </Link>
           <Link
             href="/jobs"
-            className={`whitespace-nowrap rounded-lg px-2 sm:px-3 py-1.5 text-sm font-semibold transition hover:text-purple-300 ${
+            className={`hidden sm:inline whitespace-nowrap rounded-lg px-2 sm:px-3 py-1.5 text-sm font-semibold transition hover:text-purple-300 ${
               pathname === "/jobs" ? "text-purple-300" : "text-zinc-300"
             }`}
           >
