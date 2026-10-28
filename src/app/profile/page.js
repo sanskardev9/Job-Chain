@@ -465,7 +465,13 @@ export default function ProfilePage() {
     setSaving(false);
   };
 
+  // Every application attaches the CV, so the other steps open only once it is uploaded.
   const goTo = (id) => {
+    if (id !== "cv" && !cv) {
+      setStep("cv");
+      setCvError("Upload your CV first: every application is sent with it.");
+      return;
+    }
     setStep(id);
     setMessage("");
     window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
@@ -573,6 +579,7 @@ export default function ProfilePage() {
         steps={STEPS.map((s) => ({ ...s, done: { cv: Boolean(cv), details: detailsSaved, search: prefsSaved, gmail: Boolean(gmail) }[s.id] }))}
         active={step}
         onSelect={goTo}
+        locked={cv ? [] : ["details", "search", "gmail"]}
         showProgress={showGuide}
         starting={starting}
         onFinish={findFirstJobs}
@@ -813,9 +820,9 @@ export default function ProfilePage() {
             </button>
           ) : null}
           {step === "cv" ? (
-            <button type="button" onClick={() => goTo("details")} disabled={cvReading}
-              className="flex-1 rounded-xl bg-white px-4 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-60">
-              {cv ? "Continue: check your details →" : "Skip, fill in by hand →"}
+            <button type="button" onClick={() => goTo("details")} disabled={cvReading || !cv}
+              className="flex-1 rounded-xl bg-white px-4 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white disabled:hover:text-black">
+              {cv ? "Continue: check your details →" : "Upload your CV to continue"}
             </button>
           ) : (
             <button type="submit" disabled={saving}

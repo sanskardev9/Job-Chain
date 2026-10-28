@@ -4,7 +4,7 @@ import { Check, Loader2, Rocket } from "lucide-react";
 
 // Profile set up as tabs: one step visible at a time. steps: [{ id, label, hint, done }]
 // While setup is incomplete (or just finished) it also shows progress and the first-search button.
-export default function SetupGuide({ steps, active, onSelect, showProgress, starting, onFinish }) {
+export default function SetupGuide({ steps, active, onSelect, showProgress, starting, onFinish, locked = [] }) {
   const doneCount = steps.filter((s) => s.done).length;
   const allDone = doneCount === steps.length;
 
@@ -38,6 +38,7 @@ export default function SetupGuide({ steps, active, onSelect, showProgress, star
         <div role="tablist" aria-label="Profile steps" className={`grid gap-2 grid-cols-2 lg:grid-cols-4 ${showProgress ? "mt-4" : ""}`}>
           {steps.map((step, index) => {
             const selected = step.id === active;
+            const isLocked = locked.includes(step.id);
             return (
               <button
                 key={step.id}
@@ -45,7 +46,9 @@ export default function SetupGuide({ steps, active, onSelect, showProgress, star
                 role="tab"
                 aria-selected={selected}
                 onClick={() => onSelect(step.id)}
-                className={`flex h-full w-full items-start gap-2.5 rounded-xl border p-3 text-left transition ${
+                aria-disabled={isLocked}
+                title={isLocked ? "Upload your CV first" : undefined}
+                className={`flex h-full w-full items-start gap-2.5 rounded-xl border p-3 text-left transition ${isLocked ? "opacity-50" : ""} ${
                   selected
                     ? "border-purple-500 bg-purple-500/15 ring-1 ring-purple-500/50"
                     : step.done
