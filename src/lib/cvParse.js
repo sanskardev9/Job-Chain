@@ -25,6 +25,13 @@ export async function pdfText(source) {
       .sort((a, b) => b[0] - a[0])
       .forEach(([, parts]) => lines.push(parts.sort((a, b) => a.x - b.x).map((p) => p.s).join(" ").replace(/\s+/g, " ").trim()));
   }
+  // Clickable links ("GitHub", "LinkedIn" words) keep their address only in the PDF's link list.
+  for (let n = 1; n <= pdf.numPages; n += 1) {
+    const page = await pdf.getPage(n);
+    for (const note of await page.getAnnotations()) {
+      if (note.subtype === "Link" && note.url && !/^mailto:/i.test(note.url)) lines.push(note.url);
+    }
+  }
   await pdf.destroy();
   return lines.filter(Boolean).join("\n");
 }

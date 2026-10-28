@@ -36,6 +36,13 @@ const EMPTY_FORM = {
   max_sends_per_run: 5,
 };
 
+const STEPS = [
+  { id: "cv", label: "Your CV", hint: "We fill in your details from it" },
+  { id: "details", label: "Your details", hint: "Check what the CV gave us" },
+  { id: "search", label: "What you're looking for", hint: "Visa, countries, job titles" },
+  { id: "gmail", label: "Gmail & sending", hint: "Send-only access" },
+];
+
 const CV_BUCKET = "cvs";
 const CV_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -114,9 +121,13 @@ export default function ProfilePage() {
   const [user, setUser] = useState(null);
   // Setup checklist: details saved (skills), CV uploaded, Gmail connected.
   const [detailsSaved, setDetailsSaved] = useState(false);
+  // Job preferences saved: the CV can't tell us these (visa, countries, job titles).
+  const [prefsSaved, setPrefsSaved] = useState(false);
   const [starting, setStarting] = useState(false);
   // Checklist shows while setup is incomplete, during onboarding, or right after finishing it.
   const [showGuide, setShowGuide] = useState(false);
+  // Which profile tab is open: cv | details | search | gmail.
+  const [step, setStep] = useState("cv");
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -178,9 +189,20 @@ export default function ProfilePage() {
       }
 
       setDetailsSaved(Boolean(data?.skills?.length));
+      setPrefsSaved(data?.needs_sponsorship != null);
       const params = new URLSearchParams(window.location.search);
       setShowGuide(
-        !data?.skills?.length || !data?.cv_storage_path || !account || params.has("welcome") || params.has("gmail")
+        !data?.skills?.length || data?.needs_sponsorship == null || !data?.cv_storage_path || !account ||
+          params.has("welcome") || params.has("gmail")
+      );
+      // Open the first unfinished step (Gmail right after connecting it).
+      setStep(
+        params.has("gmail") ? "gmail"
+          : !data?.cv_storage_path ? "cv"
+          : !data?.skills?.length ? "details"
+          : data?.needs_sponsorship == null ? "search"
+          : !account ? "gmail"
+          : "details"
       );
       if (data?.cv_storage_path) {
         setCv({ path: data.cv_storage_path, filename: data.cv_filename || "cv.pdf" });
@@ -330,7 +352,7 @@ export default function ProfilePage() {
           ? `Filled ${filled.length} field${filled.length === 1 ? "" : "s"} from your CV (marked “From your CV”). Check them, fill in the ones marked “Please fill in”, then save.`
           : "Your profile already had everything your CV mentions. Fill in anything marked “Please fill in”, then save."
       );
-      document.getElementById("setup-details")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setStep("details");
     } catch (err) {
       console.error("Could not read the CV", err);
       setCvFillNote("Your CV is uploaded, but its text could not be read (scanned PDFs have no text). Please fill in your details below.");
@@ -435,10 +457,18 @@ export default function ProfilePage() {
     const error = await persistProfile();
     if (error) {
       setErrorMessage(error);
+    } else if (step === "details" || step === "search") {
+      goTo(step === "details" ? "search" : "gmail");
     } else {
       setMessage("Profile saved. JobPilot will use it on its next run.");
     }
     setSaving(false);
+  };
+
+  const goTo = (id) => {
+    setStep(id);
+    setMessage("");
+    window.scrollTo({ top: 0, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   };
 
   // Writes the form to the database. Returns an error message, or null on success.
@@ -486,6 +516,7 @@ export default function ProfilePage() {
       setDetailsSaved(true);
       window.dispatchEvent(new CustomEvent("jobchain:profile-saved"));
     }
+    if (form.needs_sponsorship !== "") setPrefsSaved(true);
     return null;
   };
 
@@ -538,18 +569,17 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      {showGuide ? <SetupGuide
-        steps={[
-          { id: "setup-cv", label: "Upload your CV", hint: "We fill in your details from it", done: Boolean(cv) },
-          { id: "setup-details", label: "Check your details", hint: "Fix anything, fill what's missing, save", done: detailsSaved },
-          { id: "setup-gmail", label: "Connect Gmail", hint: "Send-only: applications go from your address", done: Boolean(gmail) },
-        ]}
+      <SetupGuide
+        steps={STEPS.map((s) => ({ ...s, done: { cv: Boolean(cv), details: detailsSaved, search: prefsSaved, gmail: Boolean(gmail) }[s.id] }))}
+        active={step}
+        onSelect={goTo}
+        showProgress={showGuide}
         starting={starting}
         onFinish={findFirstJobs}
-      /> : null}
+      />
 
       <form onSubmit={saveProfile} className="max-w-3xl mx-auto py-4 space-y-6">
-        <section id="setup-cv" className="scroll-mt-24 rounded-2xl border border-purple-500/30 bg-zinc-900 p-6 space-y-3">
+        <section id="setup-cv" className={`scroll-mt-24 rounded-2xl border border-purple-500/30 bg-zinc-900 p-6 space-y-3 ${step === "cv" ? "" : "hidden"}`}>
           <h2 className="text-xl font-semibold">Start with your CV</h2>
           <p className="text-sm text-zinc-400">
             Upload it and JobPilot fills in what it can find. You only fill in what is left.
@@ -596,7 +626,7 @@ export default function ProfilePage() {
             {cvError ? <span className="block text-sm text-red-400 mt-1">{cvError}</span> : null}
           </div>
         </section>
-        <section id="setup-details" className="scroll-mt-24 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
+        <section id="setup-details" className={`scroll-mt-24 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4 ${step === "details" ? "" : "hidden"}`}>
           <h2 className="text-xl font-semibold">About you</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Field label="Name used in emails" tag={tagFor("preferred_name")}>
@@ -618,7 +648,7 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
+        <section className={`rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4 ${step === "details" ? "" : "hidden"}`}>
           <h2 className="text-xl font-semibold">Experience</h2>
           <Field label="Role family">
             <input className={inputClass} value={form.role_family}
@@ -663,7 +693,7 @@ export default function ProfilePage() {
           </Field>
 
           <div>
-            <span className="block text-sm font-semibold text-zinc-200 mb-1">Languages<FieldTag tag={tagFor("languages")} /></span>
+            <span className="block text-sm font-semibold text-zinc-200 mb-1">Languages<FieldTag tag={tagFor("languages", false)} /></span>
             <div className="space-y-2">
               {form.languages.map((item, index) => (
                 <div key={index} className="flex gap-2">
@@ -692,8 +722,13 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
-          <h2 className="text-xl font-semibold">Job search</h2>
+        <section id="setup-search" className={`scroll-mt-24 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4 ${step === "search" ? "" : "hidden"}`}>
+          <div>
+            <h2 className="text-xl font-semibold">What you&apos;re looking for</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Your CV can&apos;t tell us this. Only the visa question is required; the rest has sensible defaults.
+            </p>
+          </div>
           <Field label="Do you need visa / work-permit sponsorship?" tag={tagFor("needs_sponsorship")}>
             <select className={inputClass} value={form.needs_sponsorship}
               onChange={(e) => setField("needs_sponsorship", e.target.value)}>
@@ -702,7 +737,7 @@ export default function ProfilePage() {
               <option value="false">No</option>
             </select>
           </Field>
-          <Field label="Target countries" hint="Comma separated. Empty means all of Europe." tag={tagFor("target_countries")}>
+          <Field label="Target countries" hint="Comma separated. Empty means all of Europe." tag={tagFor("target_countries", false)}>
             <input className={inputClass} value={form.target_countries}
               placeholder="Germany, Netherlands, Ireland"
               onChange={(e) => setField("target_countries", e.target.value)} />
@@ -714,7 +749,7 @@ export default function ProfilePage() {
           </Field>
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4">
+        <section className={`rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4 ${step === "gmail" ? "" : "hidden"}`}>
           <h2 className="text-xl font-semibold">Sending</h2>
           <div id="setup-gmail" className="scroll-mt-24">
             <span className="block text-sm font-semibold text-zinc-200 mb-1">Send from Gmail</span>
@@ -770,10 +805,25 @@ export default function ProfilePage() {
         {errorMessage ? <p className="text-sm text-red-400">{errorMessage}</p> : null}
         {message ? <p className="text-sm text-emerald-400">{message}</p> : null}
 
-        <button type="submit" disabled={saving}
-          className="w-full rounded-xl bg-white px-4 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-60">
-          {saving ? "Saving..." : "Save profile"}
-        </button>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row">
+          {step !== "cv" ? (
+            <button type="button" onClick={() => goTo(STEPS[STEPS.findIndex((s) => s.id === step) - 1].id)}
+              className="rounded-xl border border-zinc-700 px-5 py-3 font-semibold text-zinc-300 hover:border-zinc-500 transition">
+              ← Back
+            </button>
+          ) : null}
+          {step === "cv" ? (
+            <button type="button" onClick={() => goTo("details")} disabled={cvReading}
+              className="flex-1 rounded-xl bg-white px-4 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-60">
+              {cv ? "Continue: check your details →" : "Skip, fill in by hand →"}
+            </button>
+          ) : (
+            <button type="submit" disabled={saving}
+              className="flex-1 rounded-xl bg-white px-4 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-60">
+              {saving ? "Saving..." : step === "gmail" ? "Save" : "Save & continue →"}
+            </button>
+          )}
+        </div>
       </form>
 
       {cvPreviewUrl ? (
