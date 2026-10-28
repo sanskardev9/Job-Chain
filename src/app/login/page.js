@@ -21,6 +21,10 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || "/jobs";
+  // /login?signup=1 opens the sign-up form directly ("Get started").
+  useEffect(() => {
+    if (searchParams.get("signup")) setShowSignup(true);
+  }, [searchParams]);
 
   useEffect(() => {
     const checkSession = async () => {

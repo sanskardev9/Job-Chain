@@ -9,8 +9,18 @@ import { supabase } from "../lib/supabaseClient";
 
 const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 
+const LINKS = [
+  { href: "/jobs", label: "Jobs" },
+  { href: "/bookmarks", label: "Bookmarks", count: "bookmarks" },
+  { href: "/applied", label: "Applied", count: "applied" },
+  { href: "/jobpilot", label: "JobPilot" },
+  { href: "/profile", label: "Profile" },
+];
+
 export default function Navbar() {
   const [user, setUser] = useState(null);
+  // False until the session is known, so logged-in users never see the logged-out bar flash.
+  const [authChecked, setAuthChecked] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [bookmarkCount, setBookmarkCount] = useState(0);
   const [appliedCount, setAppliedCount] = useState(0);
@@ -34,6 +44,7 @@ export default function Navbar() {
       const { data, error } = await supabase.auth.getUser();
       if (!error && isMounted) {
         setUser(data.user ?? null);
+        setAuthChecked(true);
       }
     };
 
@@ -43,6 +54,7 @@ export default function Navbar() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setAuthChecked(true);
     });
 
     return () => {
@@ -135,256 +147,145 @@ export default function Navbar() {
         </h1>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setMobileOpen(true)}
-        className="sidebar-nav-item lg:hidden rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
-        aria-label="Open menu"
-      >
-        <Menu size={20} />
-      </button>
+      {!authChecked ? null : user ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="sidebar-nav-item lg:hidden rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
+            aria-label="Open menu"
+          >
+            <Menu size={20} />
+          </button>
 
-      <nav className="hidden lg:block lg:w-auto">
-        <ul className="flex items-center justify-end gap-5 text-base xl:text-lg font-semibold tracking-wide whitespace-nowrap">
-          <li>
-            <Link
-              href="/"
-              className=" hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
-            >
-              Home
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/jobs"
-              className="hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
-            >
-              Jobs
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/bookmarks"
-              className="relative inline-flex hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
-            >
-              Bookmarks
-              {bookmarkCount > 0 ? (
-                <span className="absolute -top-2 -right-4 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
-                  {bookmarkCount}
-                </span>
-              ) : null}
-            </Link>
-          </li>
-          <li>
-            <Link
-              href="/applied"
-              className="relative inline-flex hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
-            >
-              Applied
-              {appliedCount > 0 ? (
-                <span className="absolute -top-2 -right-4 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
-                  {appliedCount}
-                </span>
-              ) : null}
-            </Link>
-          </li>
-          {user ? (
-            <li>
-              <Link
-                href="/jobpilot"
-                className="hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
-              >
-                JobPilot
-              </Link>
-            </li>
-          ) : null}
-          {user ? (
-            <li>
-              <Link
-                href="/profile"
-                className="hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200"
-              >
-                Profile
-              </Link>
-            </li>
-          ) : null}
-          <li>
-            {user ? (
-              <div className="flex items-center gap-2 whitespace-nowrap">
-                <span className="text-zinc-300 text-sm sm:text-base font-medium">
-                  <span className="hidden lg:inline mr-2">| </span>
-                  {displayName}
-                </span>
-                <button
-                  type="button"
-                  onClick={requestSignOut}
-                  className="rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
-                  aria-label="Sign out"
-                  title="Sign out"
-                >
-                  <LogOut size={16} />
-                </button>
-              </div>
-            ) : (
-              <Link
-                href="/login"
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs sm:text-sm hover:border-purple-500 hover:text-purple-300 transition whitespace-nowrap"
-              >
-                Sign in
-              </Link>
-            )}
-          </li>
-        </ul>
-      </nav>
-
-      <div
-        className={`lg:hidden fixed inset-0 z-50 transition-opacity duration-300 ${
-          mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
-      >
-        <button
-          type="button"
-          onClick={() => setMobileOpen(false)}
-          className="absolute inset-0 bg-black/60"
-          aria-label="Close menu backdrop"
-        />
-        <aside
-          className={`absolute right-0 top-0 h-full w-55 bg-zinc-950 border-l border-zinc-800 shadow-2xl transition-transform duration-300 ease-out ${
-            mobileOpen ? "translate-x-0" : "translate-x-full"
-          }`}
-        >
-          <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-            <span className="font-bold">Menu</span>
-            <button
-              type="button"
-              onClick={() => setMobileOpen(false)}
-              className="rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
-              aria-label="Close menu"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <ul className="flex items-start flex-col px-5 py-6 gap-1 text-lg font-semibold tracking-wide w-full">
-            <li className="w-full">
-              <Link
-                href="/"
-                onClick={() => setMobileOpen(false)}
-                className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
-                  pathname === "/"
-                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
-                    : "text-white"
-                }`}
-              >
-                Home
-              </Link>
-            </li>
-            <li className="w-full">
-              <Link
-                href="/jobs"
-                onClick={() => setMobileOpen(false)}
-                className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
-                  pathname === "/jobs"
-                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
-                    : "text-white"
-                }`}
-              >
-                Jobs
-              </Link>
-            </li>
-            <li className="w-full">
-              <Link
-                href="/bookmarks"
-                onClick={() => setMobileOpen(false)}
-                className={`sidebar-nav-item relative block w-full rounded-lg px-3 py-3 transition ${
-                  pathname === "/bookmarks"
-                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
-                    : "text-white"
-                }`}
-              >
-                Bookmarks
-                {bookmarkCount > 0 ? (
-                  <span className="absolute top-4 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
-                    {bookmarkCount}
+          <nav className="hidden lg:block lg:w-auto">
+            <ul className="flex items-center justify-end gap-5 text-base xl:text-lg font-semibold tracking-wide whitespace-nowrap">
+              {LINKS.map((link) => {
+                const count = link.count === "bookmarks" ? bookmarkCount : link.count === "applied" ? appliedCount : 0;
+                return (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      className={`relative inline-flex hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] hover:text-purple-600 transition-colors duration-200 ${
+                        pathname === link.href ? "text-purple-300" : ""
+                      }`}
+                    >
+                      {link.label}
+                      {count > 0 ? (
+                        <span className="absolute -top-2 -right-4 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                          {count}
+                        </span>
+                      ) : null}
+                    </Link>
+                  </li>
+                );
+              })}
+              <li>
+                <div className="flex items-center gap-2 whitespace-nowrap">
+                  <span className="text-zinc-300 text-sm sm:text-base font-medium">
+                    <span className="hidden lg:inline mr-2">| </span>
+                    {displayName}
                   </span>
-                ) : null}
-              </Link>
-            </li>
-            <li className="w-full">
-              <Link
-                href="/applied"
-                onClick={() => setMobileOpen(false)}
-                className={`sidebar-nav-item relative block w-full rounded-lg px-3 py-3 transition ${
-                  pathname === "/applied"
-                    ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
-                    : "text-white"
-                }`}
-              >
-                Applied
-                {appliedCount > 0 ? (
-                  <span className="absolute top-4 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
-                    {appliedCount}
-                  </span>
-                ) : null}
-              </Link>
-            </li>
-            {user ? (
-              <li className="w-full">
-                <Link
-                  href="/jobpilot"
-                  onClick={() => setMobileOpen(false)}
-                  className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
-                    pathname === "/jobpilot"
-                      ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
-                      : "text-white"
-                  }`}
-                >
-                  JobPilot
-                </Link>
-              </li>
-            ) : null}
-            {user ? (
-              <li className="w-full">
-                <Link
-                  href="/profile"
-                  onClick={() => setMobileOpen(false)}
-                  className={`sidebar-nav-item block w-full rounded-lg px-3 py-3 transition ${
-                    pathname === "/profile"
-                      ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
-                      : "text-white"
-                  }`}
-                >
-                  Profile
-                </Link>
-              </li>
-            ) : null}
-            <li className="pt-4 w-full">
-              {user ? (
-                <div className="sidebar-nav-item mb-3 w-full rounded-lg border border-zinc-800 px-3 py-2 flex items-center justify-between">
-                  <p className="text-base font-medium text-zinc-300">{displayName}</p>
                   <button
                     type="button"
                     onClick={requestSignOut}
-                    className="rounded-lg border border-zinc-700 p-2 text-white hover:border-purple-500 hover:text-purple-300 transition"
+                    className="rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
                     aria-label="Sign out"
                     title="Sign out"
                   >
                     <LogOut size={16} />
                   </button>
                 </div>
-              ) : (
-                <Link
-                  href="/login"
+              </li>
+            </ul>
+          </nav>
+
+          <div
+            className={`lg:hidden fixed inset-0 z-50 transition-opacity duration-300 ${
+              mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setMobileOpen(false)}
+              className="absolute inset-0 bg-black/60"
+              aria-label="Close menu backdrop"
+            />
+            <aside
+              className={`absolute right-0 top-0 h-full w-55 bg-zinc-950 border-l border-zinc-800 shadow-2xl transition-transform duration-300 ease-out ${
+                mobileOpen ? "translate-x-0" : "translate-x-full"
+              }`}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+                <span className="font-bold">Menu</span>
+                <button
+                  type="button"
                   onClick={() => setMobileOpen(false)}
-                  className="sidebar-nav-item w-full rounded-lg border border-zinc-700 px-3 py-2 text-sm text-white hover:border-purple-500 hover:text-purple-300 transition inline-block"
+                  className="rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
+                  aria-label="Close menu"
                 >
-                  Sign in
-                </Link>
-              )}
-            </li>
-          </ul>
-        </aside>
-      </div>
+                  <X size={18} />
+                </button>
+              </div>
+
+              <ul className="flex items-start flex-col px-5 py-6 gap-1 text-lg font-semibold tracking-wide w-full">
+                {LINKS.map((link) => {
+                  const count = link.count === "bookmarks" ? bookmarkCount : link.count === "applied" ? appliedCount : 0;
+                  return (
+                    <li key={link.href} className="w-full">
+                      <Link
+                        href={link.href}
+                        onClick={() => setMobileOpen(false)}
+                        className={`sidebar-nav-item relative block w-full rounded-lg px-3 py-3 transition ${
+                          pathname === link.href
+                            ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
+                            : "text-white"
+                        }`}
+                      >
+                        {link.label}
+                        {count > 0 ? (
+                          <span className="absolute top-4 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
+                            {count}
+                          </span>
+                        ) : null}
+                      </Link>
+                    </li>
+                  );
+                })}
+                <li className="pt-4 w-full">
+                  <div className="sidebar-nav-item mb-3 w-full rounded-lg border border-zinc-800 px-3 py-2 flex items-center justify-between">
+                    <p className="text-base font-medium text-zinc-300">{displayName}</p>
+                    <button
+                      type="button"
+                      onClick={requestSignOut}
+                      className="rounded-lg border border-zinc-700 p-2 text-white hover:border-purple-500 hover:text-purple-300 transition"
+                      aria-label="Sign out"
+                      title="Sign out"
+                    >
+                      <LogOut size={16} />
+                    </button>
+                  </div>
+                </li>
+              </ul>
+            </aside>
+          </div>
+        </>
+      ) : (
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link
+            href="/login"
+            className="whitespace-nowrap rounded-lg px-3 py-1.5 text-sm font-semibold text-zinc-300 hover:text-purple-300 transition"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/login?signup=1"
+            className="whitespace-nowrap rounded-lg bg-white px-3 sm:px-4 py-1.5 sm:py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition"
+          >
+            Get started
+          </Link>
+        </div>
+      )}
 
       {showSignOutConfirm ? (
         <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center px-4">
