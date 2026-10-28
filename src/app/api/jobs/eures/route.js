@@ -44,8 +44,10 @@ export async function GET(request) {
     if (!response.ok) return NextResponse.json({ jobs: [], error: `EURES ${response.status}` });
     const data = await response.json();
     const cutoff = Date.now() - LIST_DAYS * 24 * 60 * 60 * 1000;
+    // EURES's "Publication date": the latest of first creation and re-publication.
+    const published = (jv) => Math.max(jv.creationDate || 0, jv.lastModificationDate || 0);
     const jobs = (data.jvs || [])
-      .filter((jv) => jv.creationDate && jv.creationDate >= cutoff)
+      .filter((jv) => published(jv) >= cutoff)
       .map((jv) => {
         const code = Object.keys(jv.locationMap || {}).find((c) => COUNTRIES[c.toUpperCase()]);
         return {
@@ -55,7 +57,7 @@ export async function GET(request) {
           company: jv.employer?.name || null,
           country: code ? COUNTRIES[code.toUpperCase()] : null,
           location: null,
-          posted_at: new Date(jv.creationDate).toISOString().slice(0, 10),
+          posted_at: new Date(published(jv)).toISOString().slice(0, 10),
           deadline: null,
           has_email: null,
           snippet: plain(jv.description).slice(0, 220),
@@ -63,8 +65,16 @@ export async function GET(request) {
         };
       })
       .filter((job) => job.title && (!wanted.length || !job.country || wanted.includes(job.country)));
+    const more = (data.jvs || []).length === PAGE_SIZE;
+    // Visitors (public=1) get only what the preview shows: no company, link or text that leads off-site.
+    if (params.get("public") === "1") {
+      const safe = jobs.map(({ title, country, posted_at }, i) => ({
+        id: `live-${page}-${i}`, title, country, location: null, posted_at, deadline: null, has_email: null, live: true,
+      }));
+      return NextResponse.json({ jobs: safe, page, more });
+    }
     // More pages exist while EURES fills this one (older ads past the month are filtered out above).
-    return NextResponse.json({ jobs, page, more: (data.jvs || []).length === PAGE_SIZE });
+    return NextResponse.json({ jobs, page, more });
   } catch (error) {
     return NextResponse.json({ jobs: [], error: error.name === "TimeoutError" ? "EURES took too long" : "EURES unavailable" });
   }

@@ -28,7 +28,19 @@ export default function PublicJobs() {
     setLoading(true);
     const { data, error } = await supabase.rpc("preview_jobs", { p_query: q, p_country: c, p_limit: 24 });
     if (error) console.error("Job preview failed", error);
-    setJobs(data || []);
+    let found = data || [];
+    // A typed search also asks EURES live (same as for signed-in users), in a visitor-safe form.
+    if (q) {
+      try {
+        const params = new URLSearchParams({ q, public: "1", ...(c ? { countries: c } : {}) });
+        const live = await (await fetch(`/api/jobs/eures?${params}`)).json();
+        const seen = new Set(found.map((j) => `${j.title}|${j.country}`.toLowerCase()));
+        found = [...found, ...(live.jobs || []).filter((j) => !seen.has(`${j.title}|${j.country}`.toLowerCase()))];
+      } catch {
+        // EURES unavailable: show what JobChain already has.
+      }
+    }
+    setJobs(found);
     setLoading(false);
   };
 
@@ -155,7 +167,7 @@ export default function PublicJobs() {
           </div>
         ) : jobs.length === 0 ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
-            No fresh jobs match this search. Try other words, or sign up and JobPilot will search the job portals for you.
+            No jobs from the last month match this search. Check the spelling or try other words.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -180,9 +192,11 @@ export default function PublicJobs() {
                   </p>
                   <p className="text-xs text-zinc-500">{[job.location, job.country].filter(Boolean).join(", ")}</p>
                   {dates ? <p className="text-xs text-zinc-400">{dates}</p> : null}
-                  <p className="mt-2 text-xs text-zinc-500">
-                    {job.has_email ? "⚡ Quick apply: JobPilot can apply for you" : "Applications go through the employer's site"}
-                  </p>
+                  {job.live ? null : (
+                    <p className="mt-2 text-xs text-zinc-500">
+                      {job.has_email ? "⚡ Quick apply: JobPilot can apply for you" : "Applications go through the employer's site"}
+                    </p>
+                  )}
                   <div className="mt-auto pt-3 flex items-center gap-2">
                     <button
                       type="button"
