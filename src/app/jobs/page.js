@@ -163,6 +163,19 @@ export default function JobsPage() {
       findActiveSearch(currentUser.id).then((run) => run && followRun(run));
       const params = new URLSearchParams(window.location.search);
       if (["forYou", "latest"].includes(params.get("tab"))) setTab(params.get("tab"));
+      const runId = params.get("run");
+      if (runId) {
+        const show = params.get("show") === "good" ? "good" : "new";
+        Promise.all([
+          supabase.from("pipeline_runs").select("finished_at, requested_at").eq("id", runId).maybeSingle(),
+          supabase.from("pipeline_events").select("details").eq("run_id", runId).eq("event_type", "scored").limit(500),
+        ]).then(([{ data: run }, { data: events }]) => {
+          const urls = (events || [])
+            .filter((e) => show === "new" || ["strong", "possible"].includes(e.details?.label))
+            .map((e) => e.details?.url).filter(Boolean);
+          setFromRun({ show, at: run?.finished_at || run?.requested_at, urls: [...new Set(urls)] });
+        });
+      }
       const sharedUrl = params.get(SHARE_PARAM);
       if (sharedUrl) {
         supabase.rpc("get_shared_job", { p_source_url: sharedUrl }).then(({ data }) =>
@@ -208,6 +221,8 @@ export default function JobsPage() {
   }, []);
   // A job a friend shared with this user (/jobs?job=<source url>), shown above the lists.
   const [sharedJob, setSharedJob] = useState(null);
+  // Jobs from one JobPilot search, opened from its funnel (/jobs?run=<id>&show=new|good).
+  const [fromRun, setFromRun] = useState(null); // { show, at, urls }
   const pickedRef = useRef([]);
   pickedRef.current = picked;
   const [filterReady, setFilterReady] = useState(false);
@@ -557,6 +572,36 @@ export default function JobsPage() {
             Quick apply jobs list an application email, so JobPilot can write and send it for you.
           </span>
         </div>
+
+        {fromRun ? (() => {
+          // Best first: strong, then possible, then unlikely; higher score first within each.
+          const RANK = { strong: 0, possible: 1, unlikely: 2 };
+          const jobs = fromRun.urls.map((url) => mineByUrl.get(url)).filter(Boolean).map(fromMine)
+            .sort((a, b) => (RANK[a.match_label] ?? 3) - (RANK[b.match_label] ?? 3) || (b.score ?? 0) - (a.score ?? 0));
+          const when = fromRun.at
+            ? new Date(fromRun.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+            : "";
+          return (
+            <section className="rounded-2xl border border-purple-500/40 bg-purple-500/5 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-purple-200">
+                  {fromRun.show === "good" ? "Worth applying" : "New or updated"} · from your search{when ? ` on ${when}` : ""}
+                  <span className="ml-2 rounded-full bg-purple-500/25 px-2 py-0.5 text-xs">{jobs.length}</span>
+                </p>
+                <button type="button"
+                  onClick={() => { setFromRun(null); window.history.replaceState(null, "", "/jobs"); }}
+                  className="text-xs text-zinc-400 hover:text-zinc-200">
+                  ✕ Close
+                </button>
+              </div>
+              {jobs.length ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">{jobs.map(card)}</div>
+              ) : (
+                <p className="text-sm text-zinc-400">These jobs are no longer open (closed or older than a month).</p>
+              )}
+            </section>
+          );
+        })() : null}
 
         {sharedJob ? (
           <section className="rounded-2xl border border-purple-500/40 bg-purple-500/5 p-4">

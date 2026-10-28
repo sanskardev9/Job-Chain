@@ -56,9 +56,9 @@ function SearchFunnel({ run, live, toReview = 0, approved = 0, onOpenDrafts }) {
     { value: c.matched ?? 0, label: "jobs checked", hint: "matching your titles and countries", bar: "bg-zinc-500",
       href: "/jobs?tab=latest" },
     { value: (c.new ?? 0) + (c.updated ?? 0), label: "new or updated", hint: "since your last search", bar: "bg-blue-400",
-      href: "/jobs?tab=latest" },
+      href: `/jobs?run=${run.id}&show=new` },
     { value: (c.strong ?? 0) + (c.possible ?? 0), label: "worth applying", hint: `${c.strong ?? 0} strong · ${c.possible ?? 0} possible`,
-      bar: "bg-purple-400", href: "/jobs?tab=forYou" },
+      bar: "bg-purple-400", href: `/jobs?run=${run.id}&show=good` },
     { value: c.drafted ?? 0, label: "emails drafted", hint: draftState, bar: "bg-emerald-400", onClick: onOpenDrafts },
   ];
   const good = (c.strong ?? 0) + (c.possible ?? 0);
@@ -105,7 +105,7 @@ function SearchFunnel({ run, live, toReview = 0, approved = 0, onOpenDrafts }) {
         <p className="mt-3 text-sm text-zinc-300">
           {onSite} of the {good} worth applying {onSite === 1 ? "lists" : "list"} no email, so you apply on the employer&apos;s
           site.{" "}
-          <Link href="/jobs?tab=forYou" className="font-semibold text-purple-300 hover:underline">
+          <Link href={`/jobs?run=${run.id}&show=good`} className="font-semibold text-purple-300 hover:underline">
             See {onSite === 1 ? "it" : "them"} in For you →
           </Link>
         </p>
