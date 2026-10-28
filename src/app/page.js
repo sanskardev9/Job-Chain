@@ -508,55 +508,36 @@ export default function Home() {
       {/* The only call to action, after the visitor has seen what they get. */}
       <section className="px-4 sm:px-6 pb-24 pt-8">
         <Reveal from="scale"
-          className="spotlight relative mx-auto max-w-5xl overflow-hidden rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-600/20 via-zinc-900 to-zinc-900 px-6 py-14 text-center sm:px-12 sm:py-16">
+          className="spotlight relative mx-auto max-w-3xl overflow-hidden rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-600/20 via-zinc-900 to-zinc-900 px-6 py-10 text-center sm:px-10 sm:py-12">
 
           <div className="relative">
-            <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-500/15 ring-1 ring-purple-500/40">
-              <Zap size={22} className="fill-current text-purple-300" />
-            </span>
-            {stats ? (
-              <p className="mx-auto mt-6 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-                </span>
-                {stats.jobs.toLocaleString()} open jobs across {stats.countries} countries right now
-              </p>
-            ) : null}
-            <h2 className="mx-auto mt-5 max-w-3xl text-3xl font-extrabold tracking-tight sm:text-5xl">
+            <h2 className="mx-auto max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">
               {signedIn ? (
                 <>Your next job abroad is <span className="text-purple-400">closer than you think.</span></>
               ) : (
                 <>A whole continent of jobs. <span className="text-purple-400">One click to apply.</span></>
               )}
             </h2>
-            <p className="mx-auto mt-4 max-w-xl text-zinc-300">
+            <p className="mx-auto mt-3 max-w-lg text-sm text-zinc-400 sm:text-base">
               {signedIn
-                ? "Your latest matches and ready-to-send emails are waiting. Review them, approve, and send them all from your Gmail."
-                : "Set up your profile once in about five minutes. JobPilot does the searching, checking and writing from then on."}
+                ? "Your matches and drafts are waiting."
+                : "Set up your profile once. JobPilot does the rest."}
             </p>
-            <div className={`mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row ${signedIn === undefined ? "invisible" : ""}`}>
+            <div className={`mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row ${signedIn === undefined ? "invisible" : ""}`}>
               <Link
                 href={signedIn ? "/jobs" : "/login?signup=1"}
-                className="group inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-7 py-3.5 font-semibold text-black shadow-md transition duration-200 hover:scale-105 hover:bg-purple-600 hover:text-white sm:w-auto"
+                className="group inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-white px-6 py-3 font-semibold text-black shadow-md transition duration-200 hover:scale-105 hover:bg-purple-600 hover:text-white sm:w-auto"
               >
                 {signedIn ? "See my matches" : "Get started, it's free"}
                 <ArrowRight size={18} className="transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
               <Link
                 href={signedIn ? "/jobpilot?tab=drafts" : "/jobs"}
-                className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-zinc-600 px-7 py-3.5 font-semibold transition duration-200 hover:border-purple-500 hover:text-purple-200 sm:w-auto"
+                className="inline-flex w-full items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-zinc-600 px-6 py-3 font-semibold transition duration-200 hover:border-purple-500 hover:text-purple-200 sm:w-auto"
               >
                 {signedIn ? <><Mail size={17} /> Review my drafts</> : <><Search size={17} /> Browse today&apos;s jobs</>}
               </Link>
             </div>
-            <ul className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-xs text-zinc-400">
-              {["Free to start", "Send-only Gmail access", "Nothing sent without your OK"].map((point) => (
-                <li key={point} className="flex items-center gap-1.5">
-                  <CheckCircle2 size={14} className="text-emerald-400" /> {point}
-                </li>
-              ))}
-            </ul>
             {signedIn === false ? (
               <p className="mt-5 text-sm text-zinc-500">
                 Already have an account?{" "}
