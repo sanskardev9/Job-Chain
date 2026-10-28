@@ -217,12 +217,15 @@ export default function JobsPage() {
         String(b.posted_at || "").localeCompare(String(a.posted_at || ""))
     );
 
+  // Jobs already applied to sink to the bottom; with "Quick apply only" they are hidden (nothing left to do).
   const shownResults = results
     .filter((r) => !mineByUrl.get(r.source_url)?.dismissed)
     .map((r) => {
       const own = mineByUrl.get(r.source_url);
       return own ? { ...fromMine(own), snippet: r.snippet, has_email: r.has_email } : { ...r, discoveredId: null };
-    });
+    })
+    .filter((job) => !quickOnly || !index.appliedFor(job))
+    .sort((a, b) => Number(Boolean(index.appliedFor(a))) - Number(Boolean(index.appliedFor(b))));
 
   const card = (job) => (
     <JobCard
@@ -307,7 +310,26 @@ export default function JobsPage() {
               </Link>
             </div>
             <p className="mt-1 text-sm text-zinc-500">Strong and possible matches for your profile.</p>
-            {forYou.length === 0 ? (
+            {forYou.length === 0 && quickOnly ? (
+              <div className="mt-4 rounded-2xl border border-purple-500/30 bg-purple-500/10 p-5 text-center text-sm text-purple-100">
+                None of your scored matches lists an email right now.{" "}
+                {shownResults.length ? (
+                  <a
+                    href="#all-jobs"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      document.getElementById("all-jobs")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    className="font-semibold underline"
+                  >
+                    See {shownResults.length}
+                    {hasMore ? "+" : ""} quick-apply jobs from everyone&apos;s searches ↓
+                  </a>
+                ) : (
+                  "Try again after the next search."
+                )}
+              </div>
+            ) : forYou.length === 0 ? (
               <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-center text-zinc-400">
                 No fresh matches yet. Fill in your{" "}
                 <Link href="/profile" className="text-purple-300 hover:underline">
@@ -325,9 +347,10 @@ export default function JobsPage() {
           </section>
         ) : null}
 
-        <section>
+        <section id="all-jobs" className="scroll-mt-20">
           <h2 className="text-xl font-semibold">
-            {submitted.q ? `Results for “${submitted.q}”` : submitted.country ? `Latest in ${submitted.country}` : "Latest jobs"}
+            {quickOnly && !submitted.q && !submitted.country ? "Quick apply jobs from everyone's searches" : null}
+            {quickOnly && !submitted.q && !submitted.country ? null : submitted.q ? `Results for “${submitted.q}”` : submitted.country ? `Latest in ${submitted.country}` : "Latest jobs"}
           </h2>
 
           {lookup && lookup.q === submitted.q ? (

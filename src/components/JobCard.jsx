@@ -193,7 +193,7 @@ export default function JobCard({ job, userId, saved, applied, onChange }) {
       {!job.required_skills?.length && job.snippet ? (
         <p className="mt-2 line-clamp-3 text-xs text-zinc-400">{job.snippet}</p>
       ) : null}
-      {job.has_email ? (
+      {applied ? null : job.has_email ? (
         <p className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full border border-purple-500/50 bg-purple-500/15 px-2.5 py-1 text-xs font-semibold text-purple-200">
           <Zap size={13} className="fill-current" /> Quick apply: JobPilot writes and sends it for you
         </p>
