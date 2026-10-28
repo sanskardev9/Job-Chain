@@ -10,7 +10,11 @@ import { EmailMock, MatchesMock, ProfileMock, SAMPLE_PERSONA, SentMock } from ".
 const BEFORE_AFTER = [
   {
     before: "Hours scrolling job boards, half the posts weeks old.",
-    after: "Fresh jobs from the last 15 days, searched for your own keywords.",
+    after: "Fresh jobs from across Europe, posted in the last 15 days, searched for your own job titles.",
+  },
+  {
+    before: "Guessing whether a company will sponsor your visa, or if they hire from abroad at all.",
+    after: "Visa needs are part of your profile. If a job doesn't say, your email asks for you, politely.",
   },
   {
     before: "Applying, then spotting “German C1 required” at the very bottom.",
@@ -29,7 +33,7 @@ const BEFORE_AFTER = [
 const STEPS = [
   {
     title: "Tell JobPilot who you are",
-    text: "Your skills, experience, languages, where you want to work, whether you need a visa, and your CV. It takes about five minutes, once.",
+    text: "Your skills, experience, languages, which European countries you want to work in, whether you need a visa, and your CV. It takes about five minutes, once.",
     visual: (persona) => <ProfileMock persona={persona} />,
   },
   {
@@ -108,14 +112,14 @@ export default function Home() {
         <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
           <div className="animate-[fadeUp_0.6s_ease-out] text-center lg:text-left">
             <p className="inline-flex items-center gap-2 rounded-full border border-purple-500/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-200">
-              Meet JobPilot, your job-application co-pilot
+              🇪🇺 Built for job seekers in Europe
             </p>
             <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05]">
-              Applying for jobs shouldn&apos;t be a <span className="text-purple-400">second job.</span>
+              Applying for jobs in Europe shouldn&apos;t be a <span className="text-purple-400">second job.</span>
             </h1>
             <p className="mt-5 text-lg text-zinc-300">
-              JobPilot finds fresh openings that fit you, tells you honestly whether each one is worth your time, and
-              writes the application email. You read it. You press send.
+              JobPilot finds fresh openings across Europe that fit you, checks the language and visa requirements
+              before you apply, and writes the application email. You read it. You press send.
             </p>
             {stats ? (
               <div className="mt-8 flex justify-center gap-5 sm:gap-8 lg:justify-start">
@@ -125,7 +129,7 @@ export default function Home() {
                 </div>
                 <div>
                   <p className="whitespace-nowrap text-2xl sm:text-3xl font-extrabold text-white">{stats.countries}</p>
-                  <p className="text-xs text-zinc-500">countries</p>
+                  <p className="text-xs text-zinc-500">European countries</p>
                 </div>
                 <div>
                   <p className="whitespace-nowrap text-2xl sm:text-3xl font-extrabold text-white">~1 min</p>
@@ -158,7 +162,7 @@ export default function Home() {
           <h2 className="text-center text-2xl sm:text-3xl font-bold">Sound familiar?</h2>
           <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-2">
             {BEFORE_AFTER.map((item) => (
-              <div key={item.before} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+              <div key={item.before} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 md:last:odd:col-span-2">
                 <p className="text-sm text-zinc-500 line-through decoration-zinc-600">{item.before}</p>
                 <p className="mt-3 text-zinc-200">
                   <span className="mr-2 text-emerald-400">✓</span>
@@ -214,7 +218,7 @@ export default function Home() {
         <div className="mx-auto max-w-4xl rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-600/20 via-zinc-900 to-zinc-900 p-8 sm:p-12 text-center">
           <KeyRound size={28} className="mx-auto text-purple-300" />
           <h2 className="mt-4 text-2xl sm:text-4xl font-extrabold">
-            {signedIn ? "Your matches are waiting." : "Your next application could take a minute, not an hour."}
+            {signedIn ? "Your matches are waiting." : "Your next job in Europe could take a minute to apply for, not an hour."}
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-zinc-300">
             {signedIn

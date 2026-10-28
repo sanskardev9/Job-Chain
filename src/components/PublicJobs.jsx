@@ -41,7 +41,7 @@ export default function PublicJobs() {
       <div className="flex flex-col items-center justify-center text-center">
         <h1 className="text-3xl font-extrabold mb-3 sm:mb-6 mt-6 tracking-tight sm:text-5xl">Jobs</h1>
         <p className="text-zinc-400 text-sm sm:text-base">
-          {total ? `${total.toLocaleString()} jobs posted in the last 15 days` : "Fresh jobs from the last 15 days"}
+          {total ? `${total.toLocaleString()} jobs in Europe posted in the last 15 days` : "Fresh jobs in Europe from the last 15 days"}
           {countries.length ? ` across ${countries.length} countries.` : "."} Sign up to see which ones fit you, and
           apply with one email.
         </p>

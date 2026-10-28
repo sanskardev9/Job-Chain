@@ -147,6 +147,7 @@ function LoginPageContent() {
               <Image src="/chain.png" alt="JobChain logo" width={74} height={82} priority />
               <h1 className="text-6xl font-extrabold tracking-tight text-white">Job-Chain</h1>
             </Link>
+            <p className="mt-4 text-lg text-zinc-400">🇪🇺 Apply to jobs across Europe, one approved email at a time.</p>
           </div>
         </div>
 

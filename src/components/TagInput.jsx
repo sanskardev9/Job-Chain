@@ -8,7 +8,8 @@ const same = (a, b) => a.toLowerCase() === b.toLowerCase();
 
 // Searchable chip input: pick from suggestions or type your own and press Enter.
 // value / onChange use a comma-separated string so forms can keep storing text.
-export default function TagInput({ value, onChange, suggestions = [], placeholder = "Type to search…", label }) {
+// allowCustom=false limits choices to the suggestions.
+export default function TagInput({ value, onChange, suggestions = [], placeholder = "Type to search…", label, allowCustom = true }) {
   const tags = split(value);
   const [text, setText] = useState("");
   const [open, setOpen] = useState(false);
@@ -27,7 +28,7 @@ export default function TagInput({ value, onChange, suggestions = [], placeholde
   }, [text, suggestions, value]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const typed = text.trim();
-  const canAddTyped = typed && !tags.some((t) => same(t, typed)) && !matches.some((m) => same(m, typed));
+  const canAddTyped = allowCustom && typed && !tags.some((t) => same(t, typed)) && !matches.some((m) => same(m, typed));
   const items = [...matches, ...(canAddTyped ? [typed] : [])];
 
   const setTags = (next) => onChange(next.join(", "));
@@ -46,13 +47,13 @@ export default function TagInput({ value, onChange, suggestions = [], placeholde
       if (rootRef.current?.contains(e.target)) return;
       setOpen(false);
       // Keep anything typed but not confirmed, so it isn't lost.
-      const pending = inputRef.current?.value.trim().replace(/,/g, "");
+      const pending = allowCustom && inputRef.current?.value.trim().replace(/,/g, "");
       if (pending && !split(value).some((t) => same(t, pending))) onChange([...split(value), pending].join(", "));
       setText("");
     };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [open, value, onChange]);
+  }, [open, value, onChange, allowCustom]);
 
   useEffect(() => {
     if (open) listRef.current?.children[active]?.scrollIntoView({ block: "nearest" });
@@ -62,7 +63,7 @@ export default function TagInput({ value, onChange, suggestions = [], placeholde
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
       if (open && items[active]) add(items[active]);
-      else if (typed) add(typed);
+      else if (typed && allowCustom) add(typed);
     } else if (e.key === "Backspace" && !text && tags.length) {
       remove(tags[tags.length - 1]);
     } else if (e.key === "ArrowDown") {
@@ -110,6 +111,11 @@ export default function TagInput({ value, onChange, suggestions = [], placeholde
         />
       </div>
 
+      {open && !items.length && typed && !allowCustom ? (
+        <p className="absolute left-0 right-0 z-30 mt-2 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-zinc-400 shadow-2xl shadow-black/60">
+          No match. Only the countries in the list are covered for now.
+        </p>
+      ) : null}
       {open && items.length ? (
         <ul ref={listRef} role="listbox"
           className="absolute left-0 right-0 z-30 mt-2 max-h-64 overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-1.5 shadow-2xl shadow-black/60">

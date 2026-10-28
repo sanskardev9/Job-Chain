@@ -2,8 +2,9 @@ import "./globals.css";
 import LayoutShell from "../components/LayoutShell";
 
 export const metadata = {
-  title: "Job-Chain",
-  description: "Find remote jobs, track your applications, and let JobPilot draft and send applications you approve.",
+  title: "Job-Chain · Apply to jobs in Europe",
+  description:
+    "Fresh jobs from across Europe, checked against your skills, languages and visa needs. JobPilot writes the application email; you approve and send it.",
 };
 
 export default function RootLayout({ children }) {

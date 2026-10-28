@@ -23,7 +23,7 @@ const LANGUAGE_LEVELS = [
   { value: "C2", label: "C2 · Proficient", hint: "Near-native in every situation" },
   { value: "Native", label: "Native", hint: "Your first language" },
 ];
-// Countries the job sources cover; users can still type any other.
+// European countries the job sources cover.
 const TARGET_COUNTRIES = [
   "Austria", "Belgium", "Bulgaria", "Croatia", "Cyprus", "Czech Republic", "Denmark", "Estonia", "Finland", "France",
   "Germany", "Greece", "Hungary", "Iceland", "Ireland", "Italy", "Latvia", "Liechtenstein", "Lithuania", "Luxembourg",
@@ -769,8 +769,8 @@ export default function ProfilePage() {
                 { value: "false", label: "No, I can already work there", hint: "e.g. EU citizen or existing work permit" },
               ]} />
           </Field>
-          <Field label="Target countries" hint="Pick from the list or type a country and press Enter. Leave empty to search all of Europe." tag={tagFor("target_countries", false)}>
-            <TagInput value={form.target_countries} suggestions={TARGET_COUNTRIES} label="Target countries"
+          <Field label="Where in Europe do you want to work?" hint="Pick one or more countries. Leave empty to search all of them." tag={tagFor("target_countries", false)}>
+            <TagInput value={form.target_countries} suggestions={TARGET_COUNTRIES} label="Target countries" allowCustom={false}
               placeholder="Search countries, e.g. Germany"
               onChange={(value) => setField("target_countries", value)} />
           </Field>

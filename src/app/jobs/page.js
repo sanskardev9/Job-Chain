@@ -251,7 +251,7 @@ export default function JobsPage() {
           Jobs
         </h1>
         <p className="text-zinc-400 mb-3 text-sm sm:text-base text-center">
-          Fresh jobs from the last {FRESH_DAYS} days, from every JobChain search. The more people search, the more jobs
+          Fresh jobs across Europe from the last {FRESH_DAYS} days, from every JobChain search. The more people search, the more jobs
           there are.
         </p>
       </div>
