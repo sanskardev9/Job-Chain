@@ -7,11 +7,21 @@ import { startGmailConnect } from "../../lib/gmailClient";
 import Loader from "../../components/Loader";
 import PdfModal from "../../components/PdfModal";
 import SetupGuide from "../../components/SetupGuide";
+import LevelSelect from "../../components/LevelSelect";
 import { parseCv, pdfText } from "../../lib/cvParse";
 import { wakeWorker } from "../../lib/jobpilotClient";
 import { useRouter } from "next/navigation";
 
-const LANGUAGE_LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2", "Native"];
+// CEFR levels in plain words; the stored value stays the short code (A1…C2, Native).
+const LANGUAGE_LEVELS = [
+  { value: "A1", label: "A1 · Beginner", hint: "A few words and simple phrases" },
+  { value: "A2", label: "A2 · Elementary", hint: "Simple everyday conversations" },
+  { value: "B1", label: "B1 · Intermediate", hint: "Can handle most travel and work basics" },
+  { value: "B2", label: "B2 · Upper intermediate", hint: "Can work and hold meetings in it" },
+  { value: "C1", label: "C1 · Advanced", hint: "Fluent, close to native at work" },
+  { value: "C2", label: "C2 · Proficient", hint: "Near-native in every situation" },
+  { value: "Native", label: "Native", hint: "Your first language" },
+];
 const SEND_MODES = [
   { value: "dry_run", label: "Dry run", hint: "Find and score jobs, draft emails, never send." },
   { value: "review", label: "Review", hint: "Send only drafts you approve." },
@@ -703,24 +713,22 @@ export default function ProfilePage() {
             <span className="block text-sm font-semibold text-zinc-200 mb-1">Languages<FieldTag tag={tagFor("languages", false)} /></span>
             <div className="space-y-2">
               {form.languages.map((item, index) => (
-                <div key={index} className="flex gap-2">
+                <div key={index} className="flex flex-col gap-2 sm:flex-row">
                   <input className={inputClass} value={item.language} placeholder="English"
                     onChange={(e) => setLanguage(index, "language", e.target.value)} />
-                  <select className={`${inputClass} max-w-32`} value={item.level || ""}
-                    onChange={(e) => setLanguage(index, "level", e.target.value)}>
-                    <option value="">Level</option>
-                    {LANGUAGE_LEVELS.map((level) => (
-                      <option key={level} value={level}>{level}</option>
-                    ))}
-                  </select>
+                  <LevelSelect options={LANGUAGE_LEVELS} value={item.level || ""}
+                    onChange={(level) => setLanguage(index, "level", level)} />
                   <button type="button"
                     onClick={() => setField("languages", form.languages.filter((_, i) => i !== index))}
-                    className="rounded-lg border border-zinc-700 px-3 text-sm hover:border-red-500 hover:text-red-300 transition">
+                    className="rounded-xl border border-zinc-700 px-3 py-2 text-sm hover:border-red-500 hover:text-red-300 transition">
                     Remove
                   </button>
                 </div>
               ))}
             </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              Levels go from A1 (just starting) to C2 (near-native). Jobs that ask for a language usually want B2 or higher.
+            </p>
             <button type="button"
               onClick={() => setField("languages", [...form.languages, { language: "", level: "" }])}
               className="mt-2 rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:border-purple-500 hover:text-purple-300 transition">
