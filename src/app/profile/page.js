@@ -667,8 +667,8 @@ export default function ProfilePage() {
 
         <section className={`rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4 ${step === "details" ? "" : "hidden"}`}>
           <h2 className="text-xl font-semibold">Experience</h2>
-          <Field label="Role family">
-            <input className={inputClass} value={form.role_family}
+          <Field label="Role family" hint="The kind of work you do, e.g. Frontend Developer or Data Analyst. One only: emails say “professional frontend development experience”.">
+            <input className={inputClass} value={form.role_family} placeholder="e.g. Frontend Developer"
               onChange={(e) => setField("role_family", e.target.value)} />
           </Field>
           <Field label="Skills" hint="Comma separated, strongest first. Only skills listed here are ever claimed." tag={tagFor("skills")}>
