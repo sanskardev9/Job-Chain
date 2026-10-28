@@ -1077,3 +1077,19 @@ returns void language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.prune_stale_jobs(int) from public, anon, authenticated;
 grant execute on function public.prune_stale_jobs(int) to service_role;
+
+-- Users' scored copies get the posting date once the pool knows it (copies are only rewritten
+-- when a job changes, so a date found later would otherwise never reach them).
+create or replace function public.copy_posted_at() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.posted_at is not null then
+    update discovered_jobs set posted_at = new.posted_at
+    where source_url = new.source_url and posted_at is null;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists job_pool_copy_posted_at on public.job_pool;
+create trigger job_pool_copy_posted_at after insert or update of posted_at on public.job_pool
+  for each row execute function public.copy_posted_at();
