@@ -157,6 +157,9 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
   const writing = WRITING.includes(write?.status);
   const hidden = isHiddenEmployer(job.company);
   const dates = jobDates(job.posted_at, job.deadline);
+  // Arbeitnow locations often end with the country already ("De Lier, Zuid-Holland, Netherlands").
+  const place = job.location && job.country && job.location.toLowerCase().includes(job.country.toLowerCase())
+    ? job.location : [job.location, job.country].filter(Boolean).join(", ");
 
   return (
     <div
@@ -187,7 +190,7 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
       ) : null}
       <p className={`text-sm ${hidden ? "italic text-zinc-500" : "text-zinc-300"}`}>{companyName(job.company)}</p>
       <p className="text-xs text-zinc-500">
-        {[[job.location, job.country].filter(Boolean).join(", "), job.source].filter(Boolean).join(" · ")}
+        {[place, job.source].filter(Boolean).join(" · ")}
       </p>
       {dates ? <p className="text-xs text-zinc-400">{dates}</p> : null}
 

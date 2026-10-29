@@ -62,7 +62,7 @@ export function MoreMenu({ items, disabled }) {
         <MoreHorizontal size={18} />
       </button>
       {open ? (
-        <div className="absolute bottom-full right-0 z-30 mb-2 w-44 rounded-xl border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
+        <div className="absolute bottom-full right-0 z-30 mb-2 w-max min-w-[11rem] rounded-xl border border-zinc-700 bg-zinc-900 p-1 shadow-xl">
           {items.map((item) => (
             <button
               key={item.label}
