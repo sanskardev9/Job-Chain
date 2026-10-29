@@ -1093,3 +1093,54 @@ $$;
 drop trigger if exists job_pool_copy_posted_at on public.job_pool;
 create trigger job_pool_copy_posted_at after insert or update of posted_at on public.job_pool
   for each row execute function public.copy_posted_at();
+
+-- Commas in a typed search separate titles: "Frontend Developer, React Developer" finds either.
+create or replace function public.search_jobs(p_query text default '', p_country text default '',
+  p_limit int default 30, p_offset int default 0, p_email_only boolean default false,
+  p_hide_unlikely boolean default false, p_hide_applied boolean default false,
+  p_title_patterns text[] default null, p_country_patterns text[] default null)
+returns table(source_url text, source text, title text, company text, country text, location text,
+              posted_at date, deadline date, has_email boolean, snippet text, rank real)
+language sql stable security definer set search_path = public as $$
+  -- Generic role words are optional ("CNC programmer" also finds "CNC-Fräser"), as in pool.core_terms().
+  with core as (
+    select nullif(trim(regexp_replace(coalesce(p_query, ''),
+      '\\m(developers?|engineers?|programmers?|devs?|entwickler(in)?|softwareentwickler|ontwikkelaar|développeur)\\M',
+      ' ', 'gi')), '') as text
+  ), q as (
+    select case when trim(coalesce(p_query, '')) = '' then null
+           else websearch_to_tsquery('simple', regexp_replace(btrim(coalesce(core.text, p_query), ' ,'),
+                  '(\s*,\s*)+', ' or ', 'g')) end as tsq
+    from core
+  )
+  select p.source_url, p.source, p.title, p.company, p.country, p.location, p.posted_at, p.deadline,
+         p.has_email, left(regexp_replace(coalesce(p.data->>'description', ''), '\s+', ' ', 'g'), 220),
+         case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end
+  from public.job_pool p, q
+  where auth.uid() is not null
+    and coalesce(p.posted_at, p.fetched_at::date) >= current_date - 30
+    and (p.deadline is null or p.deadline >= current_date)
+    and (q.tsq is null or p.search @@ q.tsq)
+    and (coalesce(p_country, '') = '' or p.country ilike p_country)
+    and (not p_email_only or p.has_email)
+    -- "Latest jobs" for this user: titles and countries from their profile (same cut as pool_candidates).
+    and (coalesce(cardinality(p_title_patterns), 0) = 0
+         or replace(replace(lower(p.title), 'front-end', 'frontend'), 'front end', 'frontend')
+            like any (p_title_patterns))
+    and (coalesce(cardinality(p_country_patterns), 0) = 0 or p.country is null
+         or lower(coalesce(p.country, '') || ' ' || coalesce(p.location, '')) like any (p_country_patterns))
+    and (not p_hide_unlikely or not exists (
+      select 1 from discovered_jobs d
+      where d.user_id = auth.uid() and d.source_url = p.source_url and d.match_label = 'unlikely'))
+    and (not p_hide_applied or not exists (
+      select 1 from jobs j
+      left join discovered_jobs d on d.id = j.discovered_job_id
+      where j.user_id = auth.uid() and j.applied_at is not null
+        and (j.job_url = p.source_url or d.source_url = p.source_url)))
+  order by case when q.tsq is null then 0 else ts_rank(p.search, q.tsq) end desc,
+           p.has_email desc,
+           coalesce(p.posted_at, p.fetched_at::date) desc
+  limit least(greatest(p_limit, 1), 60) offset greatest(p_offset, 0);
+$$;
+revoke all on function public.search_jobs(text, text, int, int, boolean, boolean, boolean, text[], text[]) from public, anon;
+grant execute on function public.search_jobs(text, text, int, int, boolean, boolean, boolean, text[], text[]) to authenticated;

@@ -527,7 +527,8 @@ export default function JobsPage() {
         </p>
       </div>
 
-      <div className="max-w-7xl mx-auto py-4 space-y-8">
+      {/* Flex so a typed search's results can sit right under the search bar (sections below use order-last). */}
+      <div className="max-w-7xl mx-auto flex flex-col gap-8 py-4">
         <form onSubmit={submit} className="flex flex-col gap-2 sm:flex-row">
           <div className="relative min-w-0 flex-1">
             <Search size={18} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
@@ -582,7 +583,7 @@ export default function JobsPage() {
             ? new Date(fromRun.at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
             : "";
           return (
-            <section className="rounded-2xl border border-purple-500/40 bg-purple-500/5 p-4">
+            <section className={`rounded-2xl border border-purple-500/40 bg-purple-500/5 p-4 ${searchActive ? "order-last" : ""}`}>
               <div className="mb-3 flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-purple-200">
                   {fromRun.show === "good" ? "Worth applying" : "New or updated"} · from your search{when ? ` on ${when}` : ""}
@@ -604,7 +605,7 @@ export default function JobsPage() {
         })() : null}
 
         {sharedJob ? (
-          <section className="rounded-2xl border border-purple-500/40 bg-purple-500/5 p-4">
+          <section className={`rounded-2xl border border-purple-500/40 bg-purple-500/5 p-4 ${searchActive ? "order-last" : ""}`}>
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="inline-flex items-center gap-2 text-sm font-semibold text-purple-200">
                 <Share2 size={15} /> Shared with you

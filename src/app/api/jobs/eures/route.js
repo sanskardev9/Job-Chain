@@ -27,7 +27,6 @@ export async function GET(request) {
 
   const body = {
     resultsPerPage: PAGE_SIZE, page, sortSearch: "BEST_MATCH", publicationPeriod: "LAST_MONTH",
-    keywords: [{ keyword: q, specificSearchCode: "EVERYWHERE" }],
     occupationUris: [], skillUris: [], requiredExperienceCodes: [], positionScheduleCodes: [], sectorCodes: [],
     educationAndQualificationLevelCodes: [], positionOfferingCodes: [], locationCodes: [], euresFlagCodes: [],
     otherBenefitsCodes: [], requiredLanguages: [], minNumberPost: null,
@@ -36,17 +35,35 @@ export async function GET(request) {
   // page afterwards buries a small country's jobs under everyone else's.
   const codes = Object.entries(COUNTRIES).filter(([code, name]) => code !== "EL" && wanted.includes(name)).map(([code]) => code.toLowerCase());
   body.locationCodes = codes;
-  try {
+  // Commas separate titles ("Frontend Developer, React Developer"): one EURES search each (up to 5),
+  // merged in turn so every title shows near the top. EURES itself would match any single word.
+  const titles = q.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 5);
+  const search = async (keyword) => {
     const response = await fetch(SEARCH_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json",
         "User-Agent": "JobPilot/0.1 (personal job-search assistant; rule-based, low volume)" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, keywords: [{ keyword, specificSearchCode: "EVERYWHERE" }] }),
       signal: AbortSignal.timeout(12000),
       cache: "no-store",
     });
-    if (!response.ok) return NextResponse.json({ jobs: [], error: `EURES ${response.status}` });
-    const data = await response.json();
+    if (!response.ok) throw new Error(`EURES ${response.status}`);
+    return (await response.json()).jvs || [];
+  };
+  try {
+    const pages = await Promise.all((titles.length ? titles : [q]).map(search));
+    const seen = new Set();
+    const merged = [];
+    for (let i = 0; i < PAGE_SIZE; i += 1) {
+      for (const jvs of pages) {
+        const jv = jvs[i];
+        if (jv && !seen.has(jv.id)) {
+          seen.add(jv.id);
+          merged.push(jv);
+        }
+      }
+    }
+    const data = { jvs: merged };
     const cutoff = Date.now() - LIST_DAYS * 24 * 60 * 60 * 1000;
     // EURES's "Publication date": the latest of first creation and re-publication.
     const published = (jv) => Math.max(jv.creationDate || 0, jv.lastModificationDate || 0);
@@ -69,7 +86,7 @@ export async function GET(request) {
         };
       })
       .filter((job) => job.title && (!wanted.length || !job.country || wanted.includes(job.country)));
-    const more = (data.jvs || []).length === PAGE_SIZE;
+    const more = pages.some((jvs) => jvs.length === PAGE_SIZE);
     // Visitors (public=1) get only what the preview shows: no company, link or text that leads off-site.
     if (params.get("public") === "1") {
       const safe = jobs.map(({ title, country, posted_at }, i) => ({
@@ -80,6 +97,7 @@ export async function GET(request) {
     // More pages exist while EURES fills this one (older ads past the month are filtered out above).
     return NextResponse.json({ jobs, page, more });
   } catch (error) {
-    return NextResponse.json({ jobs: [], error: error.name === "TimeoutError" ? "EURES took too long" : "EURES unavailable" });
+    return NextResponse.json({ jobs: [], error: error.name === "TimeoutError" ? "EURES took too long"
+      : error.message?.startsWith("EURES ") ? error.message : "EURES unavailable" });
   }
 }
