@@ -98,6 +98,13 @@ function RefreshStatus({ refresh }) {
 }
 
 // The user's own scored jobs (For you).
+// Removes some parameters from the address and keeps the rest (the search, Quick apply).
+const dropParams = (...names) => {
+  const url = new URL(window.location.href);
+  names.forEach((name) => url.searchParams.delete(name));
+  window.history.replaceState(null, "", url.pathname + url.search);
+};
+
 const fetchMine = async (userId) => {
   const { data } = await supabase
     .from("discovered_jobs")
@@ -157,6 +164,14 @@ export default function JobsPage() {
       // The search starts from the profile countries; the picker changes only this search.
       pickedRef.current = profile?.target_countries || [];
       setPicked(profile?.target_countries || []);
+      // Coming back to /jobs?q=…: the same search, without searching the sources again.
+      const restore = new URLSearchParams(window.location.search);
+      if (restore.get("q")) {
+        setQuery(restore.get("q"));
+        setSubmitted({ q: restore.get("q"), country: "" });
+        fetchLive(restore.get("q"));
+      }
+      if (restore.get("quick") === "1") setQuickOnly(true);
       setFilterReady(true);
       loadDrafts(currentUser.id);
       // Coming back while a search runs: show its progress right away.
@@ -323,6 +338,17 @@ export default function JobsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [picked]);
 
+  // The search and Quick apply live in the address, so going to JobPilot and back keeps them.
+  useEffect(() => {
+    if (!filterReady) return;
+    const url = new URL(window.location.href);
+    if (submitted.q) url.searchParams.set("q", submitted.q);
+    else url.searchParams.delete("q");
+    if (quickOnly) url.searchParams.set("quick", "1");
+    else url.searchParams.delete("quick");
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }, [filterReady, submitted.q, quickOnly]);
+
   const clearSearch = () => {
     setQuery("");
     setSubmitted({ q: "", country: "" });
@@ -348,14 +374,19 @@ export default function JobsPage() {
         startedAt: prev.startedAt || state.started_at,
         events: [...(prev.events || []), ...(newEvents || [])].slice(-300),
       }));
-      if (state.status === "finished") runSearch(submitted.q, submitted.country, 0, quickOnly);
+      if (state.status === "finished") {
+        // The search also scored its jobs for this user and drafted the good ones that list an email.
+        runSearch(submitted.q, submitted.country, 0, quickOnly);
+        setMine(await fetchMine(user.id));
+        loadDrafts(user.id);
+      }
     }, 3000);
     const wake = setInterval(wakeWorker, lookup.status === "queued" ? 20000 : 240000);
     return () => {
       clearInterval(poll);
       clearInterval(wake);
     };
-  }, [lookup, runSearch, submitted, quickOnly]);
+  }, [lookup, runSearch, submitted, quickOnly, user, loadDrafts]);
 
   // A search already running for this user (started here, in JobPilot, or before leaving the page).
   const findActiveSearch = async (userId) => {
@@ -590,7 +621,7 @@ export default function JobsPage() {
                   <span className="ml-2 rounded-full bg-purple-500/25 px-2 py-0.5 text-xs">{jobs.length}</span>
                 </p>
                 <button type="button"
-                  onClick={() => { setFromRun(null); window.history.replaceState(null, "", "/jobs"); }}
+                  onClick={() => { setFromRun(null); dropParams("run", "show"); }}
                   className="text-xs text-zinc-400 hover:text-zinc-200">
                   ✕ Close
                 </button>
@@ -614,7 +645,7 @@ export default function JobsPage() {
                 type="button"
                 onClick={() => {
                   setSharedJob(null);
-                  window.history.replaceState(null, "", "/jobs");
+                  dropParams(SHARE_PARAM);
                 }}
                 className="text-xs text-zinc-400 hover:text-zinc-200"
               >

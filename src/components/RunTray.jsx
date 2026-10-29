@@ -92,10 +92,12 @@ export default function RunTray({ userId }) {
     if (states.includes("rejected")) return "rejected";
     return "draft";
   };
-  // Jobs with a draft waiting for review (each job once, however many times it was clicked).
+  // Jobs with a draft waiting for review (each job once, however many times it was clicked), plus the
+  // drafts a finished search wrote for its good matches.
   const ready = new Set(
     visible.filter((r) => r.kind === "draft" && draftState(r) === "draft").map((r) => r.discovered_job_id)
-  ).size;
+  ).size + visible.filter((r) => r.kind === "lookup" && r.status === "finished")
+    .reduce((sum, r) => sum + (r.counts?.drafted || 0), 0);
   const title = (run) =>
     run.kind === "lookup" ? `Searching for “${run.query}”` : run.discovered_jobs?.title || "Application";
 
@@ -184,9 +186,16 @@ export default function RunTray({ userId }) {
                             <span className="text-purple-300">Draft ready</span>
                           )
                         ) : (
-                          run.counts?.fetched
-                            ? `${run.counts.fetched} new job${run.counts.fetched === 1 ? "" : "s"} added to the list`
-                            : "No new jobs at the sources right now"
+                          <>
+                            {run.counts?.fetched
+                              ? `${run.counts.fetched} new job${run.counts.fetched === 1 ? "" : "s"} added to the list`
+                              : "No new jobs at the sources right now"}
+                            {run.counts?.drafted ? (
+                              <span className="text-purple-300">
+                                {" "}· {run.counts.drafted} draft{run.counts.drafted === 1 ? "" : "s"} ready
+                              </span>
+                            ) : null}
+                          </>
                         )
                       ) : failed ? (
                         run.error?.replace(/^RuntimeError:\s*/, "") || "Did not finish"

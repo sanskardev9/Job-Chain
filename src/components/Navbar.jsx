@@ -110,7 +110,12 @@ export default function Navbar() {
     };
 
     window.addEventListener(BOOKMARKS_UPDATED_EVENT, handleBookmarksUpdated);
+    // JobPilot sends (and marks jobs applied) in the background: recount now and then, and on return.
+    const recount = setInterval(loadNavCounts, 30000);
+    window.addEventListener("focus", loadNavCounts);
     return () => {
+      clearInterval(recount);
+      window.removeEventListener("focus", loadNavCounts);
       window.removeEventListener(BOOKMARKS_UPDATED_EVENT, handleBookmarksUpdated);
     };
   }, [user, pathname]);
