@@ -5,6 +5,9 @@ export const metadata = {
   title: "Job-Chain · Your next job, anywhere in Europe",
   description:
     "Fresh vacancies from every corner of Europe, checked against your skills, languages and visa needs. JobPilot writes the application email; you approve and send it.",
+  applicationName: "Job-Chain",
+  // Home Screen title on iPhone (the icon comes from src/app/apple-icon.png).
+  appleWebApp: { capable: true, title: "Job-Chain", statusBarStyle: "default" },
 };
 
 export default function RootLayout({ children }) {
