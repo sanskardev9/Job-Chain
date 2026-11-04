@@ -102,7 +102,7 @@ export default function RunTray({ userId }) {
     run.kind === "lookup" ? `Searching for “${run.query}”` : run.discovered_jobs?.title || "Application";
 
   return (
-    <div className="fixed bottom-4 right-4 z-[60] w-[min(22rem,calc(100vw-2rem))]">
+    <div className="jc-lift fixed bottom-4 right-4 z-[60] w-[min(22rem,calc(100vw-2rem))]">
       <div className="rounded-2xl border border-zinc-700 bg-zinc-900/95 shadow-2xl shadow-black/50 backdrop-blur">
         <div className="flex items-center">
         <button

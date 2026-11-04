@@ -198,3 +198,34 @@ button:disabled,
 @media (prefers-reduced-motion: reduce) {
   .flow-in, .flow-out { animation: none; }
 }
+
+/* JobPilot tab: spinning gradient ring + twinkling sparkle. */
+@keyframes jp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes jp-twinkle {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.15) rotate(14deg); }
+}
+.jp-ring {
+  background: conic-gradient(from 0deg, #a855f7, #ec4899, #6366f1, #22d3ee, #a855f7);
+  animation: jp-spin 3s linear infinite;
+  filter: blur(0.5px);
+}
+.jp-twinkle {
+  animation: jp-twinkle 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .jp-ring, .jp-twinkle {
+    animation: none;
+  }
+}
+
+/* Signed in on a phone: floating widgets sit above the bottom tab bar. */
+@media (max-width: 1023px) {
+  [data-tabs="1"] .jc-lift {
+    bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+}

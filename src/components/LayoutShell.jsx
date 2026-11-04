@@ -8,6 +8,7 @@ import Footer from "./Footer";
 import Loader from "./Loader";
 import RunTray from "./RunTray";
 import BackToTop from "./BackToTop";
+import BottomTabs from "./BottomTabs";
 import { getSetupStatus } from "../lib/setup";
 
 // Pages only for signed-in users. Home, Jobs (view-only preview) and Login are public.
@@ -95,15 +96,26 @@ export default function LayoutShell({ children }) {
     if (blocked && !signedOut.current) router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
   }, [blocked, pathname, router]);
 
+  // Signed in: the app, not the website. Home goes straight to Jobs (signing out still lands on Home).
+  const toApp = pathname === "/" && Boolean(session);
+  useEffect(() => {
+    if (toApp) router.replace("/jobs");
+  }, [toApp, router]);
+
   if (pathname === "/login") {
     return <div className="min-h-screen bg-zinc-950">{children}</div>;
   }
 
   // Private page: show nothing until we know the visitor is signed in.
-  const waiting = (isPrivate(pathname) && !session) || (Boolean(userId) && needsProfile(pathname) && profileReady !== true);
+  const waiting =
+    (isPrivate(pathname) && !session) ||
+    (Boolean(userId) && needsProfile(pathname) && profileReady !== true) ||
+    // Home: wait for the session check so signed-in users never see the website flash.
+    (pathname === "/" && session !== null);
+  const tabs = Boolean(session?.user);
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950">
+    <div className="min-h-screen flex flex-col bg-zinc-950" data-tabs={tabs ? "1" : "0"}>
       <Navbar />
       <main className="flex-1">
         {waiting ? (
@@ -114,7 +126,10 @@ export default function LayoutShell({ children }) {
           children
         )}
       </main>
-      <Footer />
+      <div className={tabs ? "pb-24 lg:pb-0" : ""}>
+        <Footer />
+      </div>
+      {tabs ? <BottomTabs /> : null}
       {session?.user ? <RunTray userId={session.user.id} /> : null}
       <BackToTop />
     </div>

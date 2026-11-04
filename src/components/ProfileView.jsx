@@ -156,6 +156,15 @@ export default function ProfileView({ form, cv, gmail, levels, sendModes, messag
           <Row label="Max emails per run">{form.max_sends_per_run}</Row>
         </Card>
       </div>
+
+      {/* Phones: the top bar only has the avatar, so sign out lives here. */}
+      <button
+        type="button"
+        onClick={() => window.dispatchEvent(new Event("jobchain:request-signout"))}
+        className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-red-500/40 py-3 text-sm font-semibold text-red-300 transition hover:bg-red-500/10 lg:hidden"
+      >
+        Sign out
+      </button>
     </div>
   );
 }

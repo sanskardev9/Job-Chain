@@ -26,7 +26,7 @@ export default function BackToTop() {
       onClick={toTop}
       aria-label="Back to top"
       tabIndex={shown ? 0 : -1}
-      className={`fixed bottom-5 left-1/2 z-[55] flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/90 px-4 py-2 text-sm font-semibold text-zinc-200 shadow-xl shadow-black/40 backdrop-blur transition-all duration-300 hover:border-purple-500 hover:text-white ${
+      className={`jc-lift fixed bottom-5 left-1/2 z-[55] flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/90 px-4 py-2 text-sm font-semibold text-zinc-200 shadow-xl shadow-black/40 backdrop-blur transition-all duration-300 hover:border-purple-500 hover:text-white ${
         shown ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-4 opacity-0"
       }`}
     >

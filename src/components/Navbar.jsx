@@ -4,25 +4,22 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, X } from "lucide-react";
+import { LogOut, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
 const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 
+// Signed-in app menu (desktop). Phones use the bottom tabs; Profile opens from the avatar.
 const LINKS = [
-  { href: "/", label: "Home" },
   { href: "/jobs", label: "Jobs" },
   { href: "/bookmarks", label: "Bookmarks", count: "bookmarks" },
   { href: "/applied", label: "Applied", count: "applied" },
-  { href: "/jobpilot", label: "JobPilot" },
-  { href: "/profile", label: "Profile" },
 ];
 
 export default function Navbar() {
   const [user, setUser] = useState(null);
   // False until the session is known, so logged-in users never see the logged-out bar flash.
   const [authChecked, setAuthChecked] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [bookmarkCount, setBookmarkCount] = useState(0);
   const [appliedCount, setAppliedCount] = useState(0);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -120,6 +117,13 @@ export default function Navbar() {
     };
   }, [user, pathname]);
 
+  // Profile page's "Sign out" (phones) opens the same confirm dialog.
+  useEffect(() => {
+    const open = () => setShowSignOutConfirm(true);
+    window.addEventListener("jobchain:request-signout", open);
+    return () => window.removeEventListener("jobchain:request-signout", open);
+  }, []);
+
   useEffect(() => {
     if (!toastMessage) return;
     const timer = setTimeout(() => setToastMessage(""), 1800);
@@ -138,7 +142,6 @@ export default function Navbar() {
     router.replace("/");
     setToastMessage("Signed out successfully");
     setSigningOut(false);
-    setMobileOpen(false);
   };
 
   return (
@@ -153,135 +156,70 @@ export default function Navbar() {
           priority
         />
         <h1 className="text-xl sm:text-2xl font-extrabold hover:text-purple-600 transition-colors tracking-wide hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] duration-300 leading-tight whitespace-nowrap">
-          <Link href="/">Job-Chain</Link>
+          <Link href={user ? "/jobs" : "/"}>Job-Chain</Link>
         </h1>
       </div>
 
       {!authChecked ? null : user ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setMobileOpen(true)}
-            className="sidebar-nav-item lg:hidden rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
-            aria-label="Open menu"
-          >
-            <Menu size={20} />
-          </button>
-
-          <nav className="hidden lg:block lg:w-auto">
-            <ul className="flex items-center justify-end gap-1 text-[15px] font-medium whitespace-nowrap">
+        <div className="flex items-center gap-2">
+          <nav className="hidden lg:block">
+            <ul className="flex items-center gap-1 text-[15px] font-medium whitespace-nowrap">
               {LINKS.map((link) => {
                 const count = link.count === "bookmarks" ? bookmarkCount : link.count === "applied" ? appliedCount : 0;
+                const active = pathname === link.href || pathname.startsWith(`${link.href}/`);
                 return (
                   <li key={link.href}>
                     <Link
                       href={link.href}
                       className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 transition-colors duration-200 ${
-                        pathname === link.href
-                          ? "bg-purple-500/15 text-purple-200"
-                          : "text-zinc-300 hover:bg-zinc-800/70 hover:text-white"
+                        active ? "bg-purple-500/15 text-purple-200" : "text-zinc-300 hover:bg-zinc-800/70 hover:text-white"
                       }`}
                     >
                       {link.label}
                       {count > 0 ? (
-                        <span className="min-w-5 rounded-full bg-purple-500/25 px-1.5 text-center text-[11px] font-semibold leading-5 text-purple-100">
-                          {count}
-                        </span>
+                        <span className="min-w-5 rounded-full bg-purple-500/25 px-1.5 text-center text-[11px] font-semibold leading-5 text-purple-100">{count}</span>
                       ) : null}
                     </Link>
                   </li>
                 );
               })}
-              <li>
-                <div className="ml-3 flex items-center gap-2 whitespace-nowrap border-l border-zinc-800 pl-4">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-600 text-sm font-bold text-white">
-                    {(displayName || "?").charAt(0).toUpperCase()}
-                  </span>
-                  <span className="text-sm font-medium text-zinc-300">{displayName}</span>
-                  <button
-                    type="button"
-                    onClick={requestSignOut}
-                    className="rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
-                    aria-label="Sign out"
-                    title="Sign out"
-                  >
-                    <LogOut size={16} />
-                  </button>
-                </div>
+              <li className="ml-1">
+                <Link
+                  href="/jobpilot"
+                  className={`group relative inline-flex items-center gap-1.5 overflow-hidden rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 px-4 py-1.5 font-semibold text-white shadow-lg shadow-purple-900/40 transition-transform hover:scale-[1.03] ${
+                    pathname.startsWith("/jobpilot") || pathname.startsWith("/drafts") ? "ring-2 ring-white/60" : ""
+                  }`}
+                >
+                  <Sparkles size={15} className="jp-twinkle" />
+                  JobPilot
+                </Link>
               </li>
             </ul>
           </nav>
 
-          <div
-            className={`lg:hidden fixed inset-0 z-50 transition-opacity duration-300 ${
-              mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-            }`}
-          >
+          <div className="flex items-center gap-2 lg:ml-3 lg:border-l lg:border-zinc-800 lg:pl-4">
+            <Link
+              href="/profile"
+              aria-label="Profile"
+              title="Profile"
+              className={`flex items-center gap-2 rounded-full transition ${pathname.startsWith("/profile") ? "ring-2 ring-purple-400 ring-offset-2 ring-offset-zinc-950" : "hover:opacity-90"}`}
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-purple-600 text-sm font-bold text-white">
+                {(displayName || "?").charAt(0).toUpperCase()}
+              </span>
+            </Link>
+            <span className="hidden text-sm font-medium text-zinc-300 lg:inline">{displayName}</span>
             <button
               type="button"
-              onClick={() => setMobileOpen(false)}
-              className="absolute inset-0 bg-black/60"
-              aria-label="Close menu backdrop"
-            />
-            <aside
-              className={`absolute right-0 top-0 h-full w-55 bg-zinc-950 border-l border-zinc-800 shadow-2xl transition-transform duration-300 ease-out ${
-                mobileOpen ? "translate-x-0" : "translate-x-full"
-              }`}
+              onClick={requestSignOut}
+              className="hidden rounded-lg border border-zinc-700 p-2 transition hover:border-purple-500 hover:text-purple-300 lg:inline-flex"
+              aria-label="Sign out"
+              title="Sign out"
             >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-                <span className="font-bold">Menu</span>
-                <button
-                  type="button"
-                  onClick={() => setMobileOpen(false)}
-                  className="rounded-lg border border-zinc-700 p-2 hover:border-purple-500 hover:text-purple-300 transition"
-                  aria-label="Close menu"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <ul className="flex items-start flex-col px-5 py-6 gap-1 text-lg font-semibold tracking-wide w-full">
-                {LINKS.map((link) => {
-                  const count = link.count === "bookmarks" ? bookmarkCount : link.count === "applied" ? appliedCount : 0;
-                  return (
-                    <li key={link.href} className="w-full">
-                      <Link
-                        href={link.href}
-                        onClick={() => setMobileOpen(false)}
-                        className={`sidebar-nav-item relative block w-full rounded-lg px-3 py-3 transition ${
-                          pathname === link.href
-                            ? "bg-purple-500/15 text-purple-300 border border-purple-500/40"
-                            : "text-white"
-                        }`}
-                      >
-                        {link.label}
-                        {count > 0 ? (
-                          <span className="absolute top-4 right-3 min-w-5 rounded-full border border-purple-500/50 bg-purple-500/20 px-1.5 text-[10px] leading-5 text-purple-200 text-center">
-                            {count}
-                          </span>
-                        ) : null}
-                      </Link>
-                    </li>
-                  );
-                })}
-                <li className="pt-4 w-full">
-                  <div className="sidebar-nav-item mb-3 w-full rounded-lg border border-zinc-800 px-3 py-2 flex items-center justify-between">
-                    <p className="text-base font-medium text-zinc-300">{displayName}</p>
-                    <button
-                      type="button"
-                      onClick={requestSignOut}
-                      className="rounded-lg border border-zinc-700 p-2 text-white hover:border-purple-500 hover:text-purple-300 transition"
-                      aria-label="Sign out"
-                      title="Sign out"
-                    >
-                      <LogOut size={16} />
-                    </button>
-                  </div>
-                </li>
-              </ul>
-            </aside>
+              <LogOut size={16} />
+            </button>
           </div>
-        </>
+        </div>
       ) : (
         <div className="flex items-center gap-1 sm:gap-3">
           <Link
