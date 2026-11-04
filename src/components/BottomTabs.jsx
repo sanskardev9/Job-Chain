@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, Bookmark, CheckCircle2, Sparkles } from "lucide-react";
+import { Briefcase, Bookmark, CheckCircle2, Sparkles, UserRound } from "lucide-react";
 
 // Phone tab bar for signed-in users. JobPilot sits in the middle, raised, with a spinning
-// gradient ring so it reads as the "do the work for me" button. Profile lives on the avatar.
+// gradient ring so it reads as the "do the work for me" button.
 const LEFT = [
   { href: "/jobs", label: "Jobs", Icon: Briefcase },
   { href: "/bookmarks", label: "Saved", Icon: Bookmark },
 ];
-const RIGHT = [{ href: "/applied", label: "Applied", Icon: CheckCircle2 }];
+const RIGHT = [
+  { href: "/applied", label: "Applied", Icon: CheckCircle2 },
+  { href: "/profile", label: "Profile", Icon: UserRound },
+];
 
 export default function BottomTabs() {
   const pathname = usePathname();
