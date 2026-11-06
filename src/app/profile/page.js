@@ -75,7 +75,7 @@ const STEPS = [
   { id: "cv", label: "Your CV", hint: "We fill in your details from it" },
   { id: "details", label: "Your details", hint: "Check what the CV gave us" },
   { id: "search", label: "What you're looking for", hint: "Visa, countries, job titles" },
-  { id: "gmail", label: "Gmail & sending", hint: "Send-only access" },
+  { id: "gmail", label: "Gmail access", hint: "Request, approve, connect" },
 ];
 
 const CV_BUCKET = "cvs";
@@ -189,6 +189,8 @@ export default function ProfilePage() {
   const [gmailBusy, setGmailBusy] = useState(false);
   const [gmailMessage, setGmailMessage] = useState("");
   const [gmailError, setGmailError] = useState("");
+  const [gmailRequest, setGmailRequest] = useState(null);
+  const [requestedGmail, setRequestedGmail] = useState("");
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -214,12 +216,15 @@ export default function ProfilePage() {
         setErrorMessage("Could not load your profile.");
       }
 
-      const { data: account } = await supabase
-        .from("email_accounts")
-        .select("email, connected_at")
-        .eq("user_id", currentUser.id)
-        .maybeSingle();
+      const [{ data: account }, { data: accessRequest }] = await Promise.all([
+        supabase.from("email_accounts").select("email, connected_at").eq("user_id", currentUser.id).maybeSingle(),
+        supabase.from("gmail_access_requests")
+          .select("id, requested_email, status, requested_at, reviewed_at, review_note")
+          .eq("user_id", currentUser.id).maybeSingle(),
+      ]);
       setGmail(account ?? null);
+      setGmailRequest(accessRequest || null);
+      setRequestedGmail(accessRequest?.requested_email || currentUser.email || "");
       if (new URLSearchParams(window.location.search).get("gmail") === "connected" && account) {
         setGmailMessage(`Connected. Applications will be sent from ${account.email}.`);
         window.history.replaceState(null, "", "/profile");
@@ -229,7 +234,7 @@ export default function ProfilePage() {
       setPrefsSaved(data?.needs_sponsorship != null);
       const params = new URLSearchParams(window.location.search);
       const settingUp =
-        !data?.skills?.length || data?.needs_sponsorship == null || !data?.cv_storage_path || !account ||
+        !data?.skills?.length || data?.needs_sponsorship == null || !data?.cv_storage_path || (!account && !accessRequest) ||
         params.has("welcome") || params.has("gmail");
       setShowGuide(settingUp);
       setEditing(settingUp || Boolean(readDraft(currentUser.id)?.form));
@@ -239,7 +244,7 @@ export default function ProfilePage() {
           : !data?.cv_storage_path ? "cv"
           : !data?.skills?.length ? "details"
           : data?.needs_sponsorship == null ? "search"
-          : !account ? "gmail"
+          : !account && !accessRequest ? "gmail"
           : "details"
       );
       if (data?.cv_storage_path) {
@@ -286,6 +291,17 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user && dirty) writeDraft(user.id, form);
   }, [user, dirty, form]);
+
+  useEffect(() => {
+    if (!user || gmailRequest?.status !== "pending") return undefined;
+    const timer = setInterval(async () => {
+      const { data } = await supabase.from("gmail_access_requests")
+        .select("id, requested_email, status, requested_at, reviewed_at, review_note")
+        .eq("user_id", user.id).maybeSingle();
+      if (data?.status !== "pending") setGmailRequest(data);
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [user, gmailRequest?.status]);
 
   const setField = (name, value) => {
     setDirty(true);
@@ -473,6 +489,30 @@ export default function ProfilePage() {
     }
   };
 
+  const requestGmailAccess = async () => {
+    setGmailBusy(true);
+    setGmailError("");
+    setGmailMessage("");
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    try {
+      const response = await fetch("/api/gmail/request-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({ email: requestedGmail }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || "Could not request Gmail access.");
+      setGmailRequest(body.request);
+      setRequestedGmail(body.request.requested_email);
+      setGmailMessage("Request sent. You can continue using JobChain while access is reviewed.");
+    } catch (error) {
+      setGmailError(error.message);
+    }
+    setGmailBusy(false);
+  };
+
   const disconnectGmail = async () => {
     setGmailBusy(true);
     setGmailError("");
@@ -624,6 +664,7 @@ export default function ProfilePage() {
           form={form}
           cv={cv}
           gmail={gmail}
+          gmailRequest={gmailRequest}
           levels={LANGUAGE_LEVELS}
           sendModes={SEND_MODES}
           message={message}
@@ -659,7 +700,7 @@ export default function ProfilePage() {
         </div>
       ) : null}
       <SetupGuide
-        steps={STEPS.map((s) => ({ ...s, done: { cv: Boolean(cv), details: detailsSaved, search: prefsSaved, gmail: Boolean(gmail) }[s.id] }))}
+        steps={STEPS.map((s) => ({ ...s, done: { cv: Boolean(cv), details: detailsSaved, search: prefsSaved, gmail: Boolean(gmail || gmailRequest) }[s.id] }))}
         active={step}
         onSelect={goTo}
         locked={cv ? [] : ["details", "search", "gmail"]}
@@ -872,33 +913,66 @@ export default function ProfilePage() {
         </section>
 
         <section className={`rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4 ${step === "gmail" ? "" : "hidden"}`}>
-          <h2 className="text-xl font-semibold">Sending</h2>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-purple-300">Final step</p>
+            <h2 className="mt-1 text-xl font-semibold">Send applications from your Gmail</h2>
+            <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+              JobChain is currently in Google&apos;s testing phase, so your exact Gmail address must be approved before Google allows the connection. Request access here—there is no need to call or message us.
+            </p>
+          </div>
           <div id="setup-gmail" className="scroll-mt-24">
-            <span className="block text-sm font-semibold text-zinc-200 mb-1">Send from Gmail</span>
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3">
+            <div className="rounded-2xl border border-zinc-700 bg-zinc-950 p-4">
               {gmail ? (
-                <>
-                  <span className="text-zinc-200 truncate max-w-full">{gmail.email}</span>
-                  <span className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-300">
-                    Connected
-                  </span>
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="min-w-0 flex-1 truncate text-zinc-200">{gmail.email}</span>
+                  <span className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-300">Connected</span>
                   <button type="button" onClick={disconnectGmail} disabled={gmailBusy}
-                    className="ml-auto rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50">
+                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50">
                     Disconnect
                   </button>
-                </>
-              ) : (
-                <>
-                  <span className="text-zinc-500">Not connected</span>
+                </div>
+              ) : gmailRequest && ["approved", "connected"].includes(gmailRequest.status) ? (
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate font-medium text-zinc-200">{gmailRequest.requested_email}</span>
+                    <span className="rounded-full border border-emerald-500/40 bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-300">Approved</span>
+                  </div>
+                  <p className="mt-3 text-sm text-zinc-400">Choose this exact address on Google&apos;s screen.</p>
                   <button type="button" onClick={connectGmail} disabled={gmailBusy}
-                    className="ml-auto rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50">
-                    {gmailBusy ? "Opening Google..." : "Connect Gmail"}
+                    className="mt-4 w-full rounded-xl bg-white px-4 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50">
+                    {gmailBusy ? "Opening Google..." : "Connect approved Gmail"}
                   </button>
-                </>
+                </div>
+              ) : gmailRequest?.status === "pending" ? (
+                <div className="flex items-start gap-3">
+                  <span className="mt-1 h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
+                  <div>
+                    <p className="font-semibold text-amber-200">Access request received</p>
+                    <p className="mt-1 break-all text-sm text-zinc-300">{gmailRequest.requested_email}</p>
+                    <p className="mt-2 text-xs leading-relaxed text-zinc-500">We&apos;ll add it to Google&apos;s test users. Return here after approval; the Connect Gmail button will appear automatically.</p>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  {gmailRequest?.status === "rejected" ? (
+                    <p className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+                      Request needs a change{gmailRequest.review_note ? `: ${gmailRequest.review_note}` : ". Check the address and request again."}
+                    </p>
+                  ) : null}
+                  <label className="block text-sm font-semibold text-zinc-200">Gmail address used to send applications</label>
+                  <input type="email" className={`${inputClass} mt-2`} value={requestedGmail}
+                    placeholder="you@gmail.com" disabled={gmailBusy}
+                    onChange={(event) => setRequestedGmail(event.target.value)} />
+                  <p className="mt-2 text-xs text-zinc-500">This must be the same Google account you choose when connecting.</p>
+                  <button type="button" onClick={requestGmailAccess} disabled={gmailBusy}
+                    className="mt-4 w-full rounded-xl bg-white px-4 py-3 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50">
+                    {gmailBusy ? "Sending request..." : gmailRequest ? "Request again" : "Request Gmail access"}
+                  </button>
+                </div>
               )}
             </div>
             <span className="block text-xs text-zinc-500 mt-1">
-              Send-only access: JobPilot can send the applications you approve, but cannot read your inbox.
+              Send-only access: JobPilot can send the applications you approve, but cannot read your inbox. During Google&apos;s testing phase, Google may ask you to reconnect periodically.
             </span>
             {gmailMessage ? <span className="block text-sm text-emerald-400 mt-1">{gmailMessage}</span> : null}
             {gmailError ? <span className="block text-sm text-red-400 mt-1">{gmailError}</span> : null}

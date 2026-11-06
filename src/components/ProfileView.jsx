@@ -51,7 +51,7 @@ function experienceText(form) {
 }
 
 // Read-only profile for users who finished setup. Every card jumps to its tab in the form.
-export default function ProfileView({ form, cv, gmail, levels, sendModes, message, cvOpening, onViewCv, onEdit }) {
+export default function ProfileView({ form, cv, gmail, gmailRequest, levels, sendModes, message, cvOpening, onViewCv, onEdit }) {
   const name = form.preferred_name || "Your profile";
   const levelLabel = (code) => levels.find((l) => l.value === code)?.label || code;
   const mode = sendModes.find((m) => m.value === form.send_mode);
@@ -151,7 +151,11 @@ export default function ProfileView({ form, cv, gmail, levels, sendModes, messag
 
         <Card icon={Send} title="Gmail & sending" onEdit={() => onEdit("gmail")}>
           <Row label="Sends from">
-            {gmail ? gmail.email : <span className="text-amber-300">Not connected</span>}
+            {gmail ? gmail.email : gmailRequest ? (
+              <span className={gmailRequest.status === "approved" ? "text-emerald-300" : "text-amber-300"}>
+                {gmailRequest.status === "approved" ? "Approved—connect now" : `${gmailRequest.requested_email} · ${gmailRequest.status}`}
+              </span>
+            ) : <span className="text-amber-300">Access not requested</span>}
           </Row>
           <Row label="Mode">{mode?.label || form.send_mode}</Row>
           <Row label="Max emails per run">{form.max_sends_per_run}</Row>

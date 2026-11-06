@@ -4,7 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Sparkles } from "lucide-react";
+import { LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
 const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
@@ -199,6 +199,12 @@ export default function Navbar() {
           </nav>
 
           <div className="flex items-center gap-2 lg:ml-3 lg:border-l lg:border-zinc-800 lg:pl-4">
+            {user.email?.toLowerCase() === "sanskar.dev09@gmail.com" ? (
+              <Link href="/admin" aria-label="Admin" title="Admin"
+                className="inline-flex rounded-lg border border-purple-500/40 p-2 text-purple-300 transition hover:bg-purple-500/10">
+                <ShieldCheck size={16} />
+              </Link>
+            ) : null}
             <Link
               href="/profile"
               aria-label="Profile"

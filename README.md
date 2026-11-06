@@ -109,6 +109,8 @@ GOOGLE_CLIENT_SECRET=
 GMAIL_TOKEN_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 CRON_SECRET=
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
 ```
 
 | Variable | Used by | Notes |
@@ -119,12 +121,15 @@ CRON_SECRET=
 | `GMAIL_TOKEN_KEY` | **Server only** | Encrypts Gmail tokens; **must match the worker's value** |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Server only** | Lets the protected scheduler queue eligible users' daily searches; never exposed to the browser |
 | `CRON_SECRET` | **Server only** | Authorizes `/api/cron/jobpilot`; Vercel sends it automatically to configured cron requests |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Browser / **server only** | Web Push keys for owner Gmail-request notifications (`npx web-push generate-vapid-keys`) |
 
 ### 3. Database
 
 Run `supabase/schema.sql` in the Supabase SQL editor. It creates the tables (profiles, jobs, candidate profiles, discovered jobs, application drafts, pipeline runs and events, email accounts and tokens, job pool) along with their Row Level Security policies.
 
 The included Vercel cron checks daily for users active within the last seven days. Each eligible user gets at most one search every 24 hours; JobPilot finds, scores and drafts automatically, but never sends without approval.
+
+While the Google OAuth app is in testing, users request access for the exact Gmail address they want to connect. The owner account (`sanskar.dev09@gmail.com`) reviews requests in `/admin`, adds the address under Google Cloud OAuth test users, then marks it approved. The callback refuses any Google account that does not match an approved request. The owner can enable browser request alerts from the Admin sidebar after VAPID keys are configured.
 
 ### 4. Run
 
@@ -152,6 +157,9 @@ src/
       gmail/            OAuth URL + code exchange (connect your Gmail)
       jobpilot/wake/    wake the worker for a run
       cron/jobpilot/    queue daily searches for recently active users
+      gmail/request-access/ Gmail test-user request workflow
+      admin/             owner-only dashboard data and approvals
+      push/subscribe/    owner browser notification subscription
   components/           job cards, tabs, landing, search progress
   lib/                  Supabase client, countries, helpers
 supabase/schema.sql     database schema and RLS policies

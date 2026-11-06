@@ -12,7 +12,7 @@ import BottomTabs from "./BottomTabs";
 import { getSetupStatus } from "../lib/setup";
 
 // Pages only for signed-in users. Home, Jobs (view-only preview) and Login are public.
-const PRIVATE_PREFIXES = ["/home", "/bookmarks", "/applied", "/jobpilot", "/profile", "/drafts", "/gmail"];
+const PRIVATE_PREFIXES = ["/home", "/bookmarks", "/applied", "/jobpilot", "/profile", "/drafts", "/gmail", "/admin"];
 // Pages that need the profile details first: new users start with the setup on /profile.
 const NEEDS_PROFILE = ["/home", "/jobs", "/bookmarks", "/applied", "/jobpilot"];
 const needsProfile = (pathname) => NEEDS_PROFILE.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -113,6 +113,12 @@ export default function LayoutShell({ children }) {
 
   if (pathname === "/login") {
     return <div className="min-h-screen bg-zinc-950">{children}</div>;
+  }
+
+  if (pathname.startsWith("/admin")) {
+    return session ? <div className="min-h-screen bg-zinc-950">{children}</div> : (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><Loader size="lg" /></div>
+    );
   }
 
   // Private page: show nothing until we know the visitor is signed in.
