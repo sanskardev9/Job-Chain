@@ -173,8 +173,8 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
     >
       {!applied && !job.live ? <BookmarkToggle saved={Boolean(saved)} disabled={busy === "save"} onToggle={toggleSaved} /> : null}
 
-      <div className="flex items-start justify-between gap-3 pr-10">
-        <h3 className="font-semibold break-words">{job.title}</h3>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 pr-10">
+        <h3 className="min-w-0 font-semibold break-words">{job.title}</h3>
         {job.match_label ? (
           <span className={`shrink-0 text-xs font-semibold capitalize ${LABEL_STYLES[job.match_label] || ""}`}>
             {job.match_label}
@@ -305,7 +305,7 @@ export default function JobCard({ job, userId, saved, applied, onChange, setupMi
         </p>
       ) : null}
 
-      <div className="mt-auto pt-3 flex items-center gap-2">
+      <div className="mt-auto flex flex-wrap items-center gap-2 pt-3">
         {job.live ? (
           <a href={job.source_url} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-white px-3 py-1.5 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition">

@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle, ArrowRight, BriefcaseBusiness, CheckCircle2, Clock3, FileText,
-  MailCheck, MapPin, RefreshCw, Sparkles, Zap,
+  AlertTriangle, ArrowRight, Clock3, FileText,
+  MailCheck, RefreshCw, Sparkles, Zap,
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
@@ -21,37 +21,6 @@ function Stat({ value, label, tone = "text-white" }) {
       <p className={`text-2xl font-extrabold tabular-nums sm:text-3xl ${tone}`}>{value}</p>
       <p className="mt-1 text-xs text-zinc-500 sm:text-sm">{label}</p>
     </div>
-  );
-}
-
-function Match({ job }) {
-  const reasons = [...(job.matched_skills || []).slice(0, 3), ...(job.unknowns || []).slice(0, 1)];
-  return (
-    <article className="group min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 transition sm:p-5 hover:-translate-y-0.5 hover:border-purple-500/50">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="truncate font-semibold text-white">{job.title}</h3>
-          <p className="mt-1 truncate text-sm text-zinc-400">{job.company || "Employer not named"}</p>
-        </div>
-        <span className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
-          job.match_label === "strong"
-            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-            : "border-yellow-500/40 bg-yellow-500/10 text-yellow-300"
-        }`}>
-          {job.match_label === "strong" ? "Strong" : "Possible"}{job.score != null ? ` · ${job.score}` : ""}
-        </span>
-      </div>
-      <p className="mt-3 flex items-center gap-1.5 text-xs text-zinc-500">
-        <MapPin size={13} /> {[job.location, job.country].filter(Boolean).join(", ") || "Europe"}
-      </p>
-      {reasons.length ? (
-        <p className="mt-3 line-clamp-2 text-sm text-zinc-300">{reasons.join(" · ")}</p>
-      ) : null}
-      <Link href={`/jobs?job=${encodeURIComponent(job.source_url)}`}
-        className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-purple-300 hover:text-purple-200">
-        View match <ArrowRight size={14} className="transition group-hover:translate-x-0.5" />
-      </Link>
-    </article>
   );
 }
 
@@ -191,34 +160,15 @@ export default function HomePage() {
           <Stat value={counts.offers || 0} label="offers" tone="text-emerald-300" />
         </section>
 
-        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,0.85fr)]">
-          <section className="min-w-0 sm:rounded-3xl sm:border sm:border-zinc-800 sm:bg-zinc-900/50 sm:p-6">
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-purple-300">Chosen for you</p>
-                <h2 className="mt-1 text-xl font-bold">Best new matches</h2>
-              </div>
-              <Link href="/jobs?tab=forYou" className="shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-400 hover:text-purple-300">See all →</Link>
-            </div>
-            {data.matches.length ? (
-              <div className="mt-4 grid grid-cols-1 gap-3">{data.matches.map((job) => <Match key={job.id} job={job} />)}</div>
-            ) : (
-              <div className="mt-5 rounded-2xl border border-dashed border-zinc-700 px-5 py-10 text-center">
-                <BriefcaseBusiness className="mx-auto text-zinc-600" />
-                <p className="mt-3 font-semibold text-zinc-300">Your next daily search will look for new matches.</p>
-                <p className="mt-1 text-sm text-zinc-500">Good matches appear here automatically.</p>
-              </div>
-            )}
-          </section>
-
-          <div className="min-w-0 space-y-6">
+        <div className="mt-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <section className="rounded-3xl border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6">
               <div className="flex items-center gap-2"><Zap size={18} className="fill-current text-purple-300" /><h2 className="font-semibold">JobPilot automation</h2></div>
               <div className="mt-5 space-y-4 text-sm">
                 <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Automatic search</span><span className={automationReady ? "text-emerald-300" : "text-amber-300"}>{automationReady ? "On · daily" : data.profile.auto_search_enabled === false ? "Paused" : "Needs setup"}</span></div>
                 <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Last search</span><span className="text-right text-zinc-300">{when(lastSearch?.finished_at || lastSearch?.requested_at)}</span></div>
                 <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Search titles</span><span className="text-zinc-300">{data.profile.keywords?.length || 0}</span></div>
-                <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Gmail</span><span className={data.gmail ? "text-zinc-300" : "text-amber-300"}>{data.gmail || "Not connected"}</span></div>
+                <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Gmail</span><span className={`min-w-0 break-all text-right ${data.gmail ? "text-zinc-300" : "text-amber-300"}`}>{data.gmail || "Not connected"}</span></div>
               </div>
               <div className="mt-5 flex flex-wrap gap-2 border-t border-zinc-800 pt-4">
                 <Link href="/jobpilot" className="rounded-lg bg-purple-600 px-3 py-2 text-sm font-semibold hover:bg-purple-500">Open JobPilot</Link>
