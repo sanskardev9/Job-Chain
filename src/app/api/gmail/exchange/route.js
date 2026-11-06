@@ -5,11 +5,13 @@ import {
   redirectUri,
   userFromRequest,
 } from "../../../../lib/gmailServer";
+import { getSupabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { OWNER_EMAIL } from "../../../../lib/serverAuth";
 
 const SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 
 export async function POST(request) {
-  const { supabase, error } = await userFromRequest(request);
+  const { supabase, user, error } = await userFromRequest(request);
   if (error) return NextResponse.json({ error }, { status: 401 });
 
   const { code } = await request.json().catch(() => ({}));
@@ -62,15 +64,31 @@ export async function POST(request) {
     return NextResponse.json({ error: "Could not read a verified Gmail address." }, { status: 400 });
   }
 
-  // During Google's testing phase, only addresses explicitly added by the owner may connect.
-  // The exact Google account chosen must match the address the owner approved.
+  const googleEmail = claims.email.trim().toLowerCase();
+  const { data: existingAccount, error: accountError } = await supabase
+    .from("email_accounts")
+    .select("email")
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (accountError) return NextResponse.json({ error: accountError.message }, { status: 500 });
+
+  // The request workflow is only for first-time connections. Anyone who had Gmail connected
+  // before this workflow was introduced can reconnect the same address without asking again.
+  // The owner is also permanently allowed to connect the owner Gmail account.
+  const previouslyConnected = existingAccount?.email?.trim().toLowerCase() === googleEmail;
+  const ownerConnectingOwnGmail = (user.email || "").toLowerCase() === OWNER_EMAIL && googleEmail === OWNER_EMAIL;
+
+  // New users still need an explicit approval, and must choose that exact Google account.
   const { data: accessRequest, error: requestError } = await supabase
     .from("gmail_access_requests")
     .select("requested_email, status")
-    .eq("requested_email", claims.email.toLowerCase())
+    .eq("requested_email", googleEmail)
     .in("status", ["approved", "connected"])
     .maybeSingle();
-  if (requestError || !accessRequest) {
+  if (requestError && !previouslyConnected && !ownerConnectingOwnGmail) {
+    return NextResponse.json({ error: requestError.message }, { status: 500 });
+  }
+  if (!accessRequest && !previouslyConnected && !ownerConnectingOwnGmail) {
     return NextResponse.json(
       { error: `Access for ${claims.email} has not been approved yet. Request access from your Profile first.` },
       { status: 403 }
@@ -86,9 +104,23 @@ export async function POST(request) {
     return NextResponse.json({ error: saveError.message }, { status: 500 });
   }
 
-  if (accessRequest.status === "approved") {
+  if (accessRequest?.status === "approved") {
     const { error: statusError } = await supabase.rpc("mark_gmail_request_connected", { p_email: claims.email });
     if (statusError) return NextResponse.json({ error: statusError.message }, { status: 500 });
+  } else if (!accessRequest && (previouslyConnected || ownerConnectingOwnGmail)) {
+    // Record the grandfathered access so all later reconnects use the normal connected state.
+    const admin = getSupabaseAdmin();
+    if (admin) {
+      await admin.from("gmail_access_requests").upsert({
+        user_id: user.id,
+        account_email: user.email,
+        full_name: user.user_metadata?.full_name || user.email?.split("@")[0] || "JobChain user",
+        requested_email: googleEmail,
+        status: "connected",
+        reviewed_at: new Date().toISOString(),
+        review_note: "Existing Gmail connection",
+      }, { onConflict: "user_id" });
+    }
   }
 
   return NextResponse.json({ email: claims.email });

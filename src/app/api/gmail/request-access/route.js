@@ -23,6 +23,26 @@ export async function POST(request) {
     return Response.json({ error: "Use the Gmail address you will choose on Google's connection screen." }, { status: 400 });
   }
 
+  // Existing connections predate the approval queue and are already trusted. Never turn
+  // their reconnect into a new pending request.
+  const { data: connectedAccount } = await admin.from("email_accounts")
+    .select("email, connected_at").eq("user_id", user.id).maybeSingle();
+  if (connectedAccount?.email?.trim().toLowerCase() === requestedEmail) {
+    const fullName = user.user_metadata?.full_name || user.email?.split("@")[0] || "JobChain user";
+    const { data: grandfathered, error: grandfatherError } = await admin.from("gmail_access_requests").upsert({
+      user_id: user.id,
+      account_email: user.email,
+      full_name: fullName,
+      requested_email: requestedEmail,
+      status: "connected",
+      requested_at: connectedAccount.connected_at || new Date().toISOString(),
+      reviewed_at: new Date().toISOString(),
+      review_note: "Existing Gmail connection",
+    }, { onConflict: "user_id" }).select("id, requested_email, status, requested_at, reviewed_at, review_note").single();
+    if (grandfatherError) return Response.json({ error: grandfatherError.message }, { status: 500 });
+    return Response.json({ request: grandfathered, alreadyConnected: true });
+  }
+
   const { data: existing } = await admin.from("gmail_access_requests").select("*").eq("user_id", user.id).maybeSingle();
   if (existing?.requested_email === requestedEmail && ["pending", "approved", "connected"].includes(existing.status)) {
     return Response.json({ request: existing, alreadyRequested: true });

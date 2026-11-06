@@ -1016,6 +1016,27 @@ $$;
 revoke all on function public.mark_gmail_request_connected(text) from public, anon;
 grant execute on function public.mark_gmail_request_connected(text) to authenticated;
 
+-- Users who connected Gmail before the approval workflow keep their access.
+insert into public.gmail_access_requests (
+  user_id, account_email, full_name, requested_email, status, requested_at, reviewed_at, review_note
+)
+select
+  account.user_id,
+  auth_user.email,
+  coalesce(auth_user.raw_user_meta_data ->> 'full_name', split_part(auth_user.email, '@', 1)),
+  lower(account.email),
+  'connected',
+  coalesce(account.connected_at, now()),
+  now(),
+  'Existing Gmail connection'
+from public.email_accounts account
+join auth.users auth_user on auth_user.id = account.user_id
+on conflict (user_id) do update set
+  requested_email = excluded.requested_email,
+  status = 'connected',
+  reviewed_at = excluded.reviewed_at,
+  review_note = excluded.review_note;
+
 create table if not exists public.push_subscriptions (
   endpoint text primary key check (char_length(endpoint) <= 1000),
   user_id uuid not null references auth.users (id) on delete cascade,
