@@ -144,8 +144,9 @@ export default function ProfileView({ form, cv, gmail, levels, sendModes, messag
           </Row>
           <p className="mt-2 text-xs text-zinc-500">Countries</p>
           <div className="mt-1"><Chips items={list(form.target_countries)} empty="All of Europe" /></div>
-          <p className="mt-3 text-xs text-zinc-500">Job titles</p>
+          <p className="mt-3 text-xs text-zinc-500">Titles JobPilot searches · {list(form.keywords).length}</p>
           <div className="mt-1"><Chips items={list(form.keywords)} empty="Frontend developer titles" /></div>
+          <Row label="Automatic search">{form.auto_search_enabled !== false ? "Daily while active" : "Paused"}</Row>
         </Card>
 
         <Card icon={Send} title="Gmail & sending" onEdit={() => onEdit("gmail")}>

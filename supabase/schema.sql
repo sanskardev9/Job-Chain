@@ -32,6 +32,10 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+-- Used by daily JobPilot automation. Activity is refreshed from the signed-in app at most
+-- every six hours; users who have not returned for seven days are automatically skipped.
+alter table public.profiles add column if not exists last_active_at timestamptz;
+
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -111,6 +115,9 @@ create table if not exists public.candidate_profiles (
 
 alter table public.candidate_profiles
   add column if not exists max_required_experience_years numeric(4, 1);
+
+alter table public.candidate_profiles
+  add column if not exists auto_search_enabled boolean not null default true;
 
 -- CV uploaded from /profile into the private "cvs" bucket at <user_id>/cv.pdf.
 -- cv_path (local file) is only a fallback for local testing.
@@ -205,7 +212,7 @@ create unique index if not exists application_drafts_one_send_per_job
   on public.application_drafts (discovered_job_id)
   where status in ('sending', 'sent');
 
--- Signed-in users may only edit the text and move draft <-> approved/rejected.
+-- Signed-in users may edit the text, review drafts, and re-approve a failed delivery for retry.
 -- Sending states and Gmail fields are reserved for JobPilot (service role).
 create or replace function public.guard_application_draft_update()
 returns trigger
@@ -216,15 +223,18 @@ begin
     return new;
   end if;
 
-  if old.status not in ('draft', 'approved', 'rejected')
-     or new.status not in ('draft', 'approved', 'rejected') then
+  -- A failed delivery can be explicitly queued again from the Drafts screen.
+  if not (
+    (old.status in ('draft', 'approved', 'rejected') and new.status in ('draft', 'approved', 'rejected'))
+    or (old.status = 'failed' and new.status = 'approved')
+  ) then
     raise exception 'status % -> % is not allowed from the app', old.status, new.status;
   end if;
 
   if new.sent_at is distinct from old.sent_at
      or new.gmail_message_id is distinct from old.gmail_message_id
-     or new.error is distinct from old.error
-     or new.recipient is distinct from old.recipient
+     or (new.error is distinct from old.error and not (old.status = 'failed' and new.status = 'approved' and new.error is null))
+     or (new.recipient is distinct from old.recipient and not (old.status = 'failed' and new.status = 'approved'))
      or new.discovered_job_id is distinct from old.discovered_job_id
      or new.user_id is distinct from old.user_id then
     raise exception 'only subject, body and status can be changed from the app';
@@ -895,6 +905,82 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke all on function public.search_jobs(text, text, int, int, boolean, boolean, boolean, text[], text[]) from public, anon;
 grant execute on function public.search_jobs(text, text, int, int, boolean, boolean, boolean, text[], text[]) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Active-user automation: daily search + draft preparation without a click.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.mark_user_active()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then raise exception 'not signed in'; end if;
+  update profiles
+  set last_active_at = now()
+  where id = auth.uid()
+    and (last_active_at is null or last_active_at < now() - interval '6 hours');
+end;
+$$;
+revoke all on function public.mark_user_active() from public, anon;
+grant execute on function public.mark_user_active() to authenticated;
+
+-- Called by the protected server cron. It only queues complete profiles that were active in
+-- the last week and have not searched in the previous 24 hours. The worker's normal search
+-- pipeline then finds, scores and drafts; sending still always requires user approval.
+create or replace function public.queue_active_jobpilot_searches(
+  p_active_days integer default 7,
+  p_min_hours integer default 24,
+  p_limit integer default 25
+)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  queued integer;
+begin
+  with eligible as (
+    select c.user_id
+    from candidate_profiles c
+    join profiles p on p.id = c.user_id
+    where c.auto_search_enabled
+      and p.last_active_at >= now() - make_interval(days => greatest(p_active_days, 1))
+      and cardinality(c.skills) > 0
+      and cardinality(c.keywords) > 0
+      and c.cv_storage_path is not null
+      and not exists (
+        select 1 from pipeline_runs active
+        where active.user_id = c.user_id
+          and active.status in ('queued', 'running')
+          and active.kind <> 'draft'
+      )
+      and not exists (
+        select 1 from pipeline_runs recent
+        where recent.user_id = c.user_id
+          and recent.kind = 'search'
+          and recent.requested_at >= now() - make_interval(hours => greatest(p_min_hours, 1))
+      )
+    order by coalesce((
+      select max(previous.requested_at) from pipeline_runs previous
+      where previous.user_id = c.user_id and previous.kind = 'search'
+    ), '-infinity'::timestamptz), p.last_active_at desc
+    limit least(greatest(p_limit, 1), 100)
+  ), inserted as (
+    insert into pipeline_runs (user_id, kind)
+    select user_id, 'search' from eligible
+    on conflict do nothing
+    returning 1
+  )
+  select count(*)::integer into queued from inserted;
+  return queued;
+end;
+$$;
+revoke all on function public.queue_active_jobpilot_searches(integer, integer, integer) from public, anon, authenticated;
+grant execute on function public.queue_active_jobpilot_searches(integer, integer, integer) to service_role;
 
 -- Shared job links (/jobs?job=<source url>): the full job for signed-in users, and the same safe
 -- preview fields as preview_jobs() for visitors (no company, link, email or description).

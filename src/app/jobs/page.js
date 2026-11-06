@@ -105,6 +105,37 @@ const dropParams = (...names) => {
   window.history.replaceState(null, "", url.pathname + url.search);
 };
 
+// Searches at the sources (lookup runs) are repeated at most once an hour per query (worker: fresh_hours=1).
+const LOOKUP_AGAIN_MS = 60 * 60 * 1000;
+const findRecentLookup = async (userId, q) => {
+  const { data } = await supabase
+    .from("pipeline_runs")
+    .select("id, status, counts, requested_at, finished_at")
+    .eq("user_id", userId).eq("kind", "lookup").ilike("query", q)
+    .gte("requested_at", new Date(Date.now() - LOOKUP_AGAIN_MS).toISOString())
+    .order("requested_at", { ascending: false })
+    .limit(1);
+  return data?.[0] || null;
+};
+const recentLookupState = (q, run) => ({
+  q, runId: run.id, status: run.status, fetched: run.counts?.fetched ?? null, recent: true,
+  at: run.finished_at || run.requested_at,
+});
+const clock = (iso) => new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+
+// "33 new jobs added below. Check again for newer ones after 10:46." / "No new jobs right now … Check again after 10:46."
+const lookupDoneText = ({ fetched, recent, at }) => {
+  const again = at ? new Date(new Date(at).getTime() + LOOKUP_AGAIN_MS) : null;
+  const later = again && again > new Date() ? `after ${clock(again.toISOString())}` : "now";
+  if (fetched && !recent) {
+    return `Searched EURES and Arbeitnow: ${fetched} new job${fetched === 1 ? "" : "s"} added below.`
+      + (again ? ` Check again for newer ones ${later}.` : "");
+  }
+  return "No new jobs right now"
+    + (at ? `: these titles were searched at EURES and Arbeitnow at ${clock(at)}.` : ".")
+    + (again ? ` Check again ${later}.` : "");
+};
+
 const fetchMine = async (userId) => {
   const { data } = await supabase
     .from("discovered_jobs")
@@ -170,6 +201,7 @@ export default function JobsPage() {
         setQuery(restore.get("q"));
         setSubmitted({ q: restore.get("q"), country: "" });
         fetchLive(restore.get("q"));
+        findRecentLookup(currentUser.id, restore.get("q")).then((run) => run && setLookup(recentLookupState(restore.get("q"), run)));
       }
       if (restore.get("quick") === "1") setQuickOnly(true);
       setFilterReady(true);
@@ -272,17 +304,9 @@ export default function JobsPage() {
     async (q) => {
       // The same words were searched at the sources in the last hour: those results are already in
       // the list, and the worker would not search again anyway. Don't queue a run that does nothing.
-      const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data: recent } = await supabase
-        .from("pipeline_runs")
-        .select("id, status, counts")
-        .eq("user_id", user.id).eq("kind", "lookup").ilike("query", q)
-        .gte("requested_at", since)
-        .order("requested_at", { ascending: false })
-        .limit(1);
-      if (recent?.length) {
-        const run = recent[0];
-        setLookup({ q, runId: run.id, status: run.status, fetched: run.counts?.fetched ?? null, recent: true });
+      const run = await findRecentLookup(user.id, q);
+      if (run) {
+        setLookup(recentLookupState(q, run));
         return;
       }
       wakeWorker();
@@ -371,6 +395,7 @@ export default function JobsPage() {
       if (state.status === lookup.status && !newEvents?.length) return;
       setLookup((prev) => ({
         ...prev, status: state.status, error: state.error, fetched: state.counts?.fetched ?? null,
+        at: state.status === "finished" ? prev.at || new Date().toISOString() : prev.at,
         startedAt: prev.startedAt || state.started_at,
         events: [...(prev.events || []), ...(newEvents || [])].slice(-300),
       }));
@@ -775,11 +800,7 @@ export default function JobsPage() {
               }`}
             >
               {lookup.status === "finished"
-                ? lookup.fetched
-                  ? `Searched EURES and Arbeitnow too: ${lookup.fetched} new job${lookup.fetched === 1 ? "" : "s"} added below.`
-                  : lookup.recent
-                    ? "These words were searched at EURES and Arbeitnow within the last hour: everything they had is below."
-                    : "Searched EURES and Arbeitnow too: they have no new jobs for these words right now."
+                ? lookupDoneText(lookup)
                 : ["failed", "cancelled"].includes(lookup.status)
                   ? lookup.error || "The live search did not finish."
                   : liveOnly.length

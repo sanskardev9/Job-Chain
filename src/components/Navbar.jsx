@@ -11,6 +11,7 @@ const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 
 // Signed-in app menu (desktop). Phones use the bottom tabs; Profile opens from the avatar.
 const LINKS = [
+  { href: "/home", label: "Home" },
   { href: "/jobs", label: "Jobs" },
   { href: "/bookmarks", label: "Bookmarks", count: "bookmarks" },
   { href: "/applied", label: "Applied", count: "applied" },
@@ -156,7 +157,7 @@ export default function Navbar() {
           priority
         />
         <h1 className="text-xl sm:text-2xl font-extrabold hover:text-purple-600 transition-colors tracking-wide hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] duration-300 leading-tight whitespace-nowrap">
-          <Link href={user ? "/jobs" : "/"}>Job-Chain</Link>
+          <Link href={user ? "/home" : "/"}>Job-Chain</Link>
         </h1>
       </div>
 

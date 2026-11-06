@@ -149,6 +149,7 @@ export default function JobPilotPage() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("activity");
+  const [draftFilter, setDraftFilter] = useState("draft");
   const [setup, setSetup] = useState(null);
   const [runs, setRuns] = useState([]);
   const [events, setEvents] = useState([]);
@@ -179,7 +180,7 @@ export default function JobPilotPage() {
   const loadSetup = useCallback(async (currentUser) => {
     const [
       { data: profile }, { data: account }, { data: workers }, { count: approved }, { count: toReview },
-      { count: scored }, { count: sent }, { data: pool },
+      { count: failed }, { count: scored }, { count: sent }, { data: pool },
     ] =
       await Promise.all([
         supabase.from("candidate_profiles")
@@ -191,6 +192,8 @@ export default function JobPilotPage() {
           .eq("user_id", currentUser.id).eq("status", "approved"),
         supabase.from("application_drafts").select("*", { count: "exact", head: true })
           .eq("user_id", currentUser.id).eq("status", "draft"),
+        supabase.from("application_drafts").select("*", { count: "exact", head: true })
+          .eq("user_id", currentUser.id).eq("status", "failed"),
         supabase.from("discovered_jobs").select("*", { count: "exact", head: true }).eq("user_id", currentUser.id),
         supabase.from("application_drafts").select("*", { count: "exact", head: true })
           .eq("user_id", currentUser.id).eq("status", "sent"),
@@ -206,6 +209,7 @@ export default function JobPilotPage() {
       workerSending: Boolean(workers?.[0]?.sending_enabled),
       approved: approved || 0,
       toReview: toReview || 0,
+      failed: failed || 0,
       freshness,
       totals: {
         pool: (pool || []).reduce((sum, c) => sum + Number(c.jobs || 0), 0),
@@ -253,7 +257,10 @@ export default function JobPilotPage() {
 
   // The tray's "Review & send" while already on this page: switch to the Drafts tab.
   useEffect(() => {
-    const openDrafts = () => setTab("drafts");
+    const openDrafts = () => {
+      setDraftFilter("draft");
+      setTab("drafts");
+    };
     window.addEventListener("jobchain:open-drafts", openDrafts);
     return () => window.removeEventListener("jobchain:open-drafts", openDrafts);
   }, []);
@@ -262,6 +269,7 @@ export default function JobPilotPage() {
     const init = async () => {
       const params = new URLSearchParams(window.location.search);
       if (TABS.some((t) => t.id === params.get("tab"))) setTab(params.get("tab"));
+      if (params.get("draft") === "failed") setDraftFilter("failed");
       // Old links to a found job now open the Jobs page.
       if (params.get("job") || params.get("tab") === "jobs") {
         window.location.replace("/jobs");
@@ -516,6 +524,12 @@ export default function JobPilotPage() {
                   >
                     Send approved ({setup?.approved || 0})
                   </button>
+                  {setup?.failed ? (
+                    <button type="button" onClick={() => { setDraftFilter("failed"); setTab("drafts"); }}
+                      className="whitespace-nowrap rounded-xl border border-red-500/50 px-4 py-2.5 font-semibold text-red-300 hover:bg-red-500/10 transition">
+                      Retry failed ({setup.failed})
+                    </button>
+                  ) : null}
                   <Link
                     href="/jobs"
                     className="whitespace-nowrap rounded-xl border border-zinc-700 px-4 py-2.5 font-semibold hover:border-purple-500 hover:text-purple-300 transition"
@@ -637,7 +651,7 @@ export default function JobPilotPage() {
         ) : null}
 
         {tab === "drafts" ? (
-          <DraftsPanel user={user} refreshKey={draftsKey} onChange={() => loadSetup(user)}
+          <DraftsPanel user={user} refreshKey={draftsKey} initialFilter={draftFilter} onChange={() => loadSetup(user)}
             onSend={() => startRun("send")}
             sendBlocked={running ? "wait for the current run to finish" : sendBlockedReason} />
         ) : null}

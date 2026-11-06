@@ -5,6 +5,7 @@ import { supabase } from "../lib/supabaseClient";
 import Loader from "./Loader";
 import TypingDraft, { markTyped, shouldType } from "./TypingDraft";
 import { jobDates } from "../lib/dates";
+import { startGmailConnect } from "../lib/gmailClient";
 
 const FILTERS = ["draft", "approved", "sent", "rejected", "failed"];
 const STATUS_STYLES = {
@@ -27,17 +28,28 @@ const inputClass =
 const inFilter = (draft, filter) =>
   filter === "sent" ? ["sent", "sending"].includes(draft.status) : draft.status === filter;
 
-export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, sendBlocked }) {
+const gmailAuthFailed = (error = "") => /gmail access expired|gmail.*revoked|invalid_grant/i.test(error);
+const validEmail = (email = "") => /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(email.trim());
+
+export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "draft", onChange, onSend, sendBlocked }) {
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState([]);
-  const [filter, setFilter] = useState("draft");
+  const [filter, setFilter] = useState(FILTERS.includes(initialFilter) ? initialFilter : "draft");
   const [busyId, setBusyId] = useState("");
   const [errors, setErrors] = useState({});
   const [selected, setSelected] = useState([]);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState("");
+  const [gmailBusy, setGmailBusy] = useState(false);
+  const [gmailReconnected] = useState(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("gmail") === "connected"
+  );
   // Draft ids currently playing the typing effect.
   const [typing, setTyping] = useState([]);
+
+  useEffect(() => {
+    if (FILTERS.includes(initialFilter)) setFilter(initialFilter);
+  }, [initialFilter]);
 
   useEffect(() => {
     const loadDrafts = async () => {
@@ -82,7 +94,7 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
       .update(values)
       .eq("id", draft.id)
       .eq("user_id", user.id)
-      .select("status, approved_at, subject, body")
+      .select("status, approved_at, subject, body, recipient, error")
       .single();
 
     if (error) {
@@ -102,6 +114,71 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
     if (values && !(await updateDraft(draft, values))) return;
     onSend?.();
     window.dispatchEvent(new CustomEvent("jobchain:run-started"));
+  };
+
+  const retryFailed = async (draft) => {
+    const recipient = draft.recipient.trim();
+    if (!validEmail(recipient)) {
+      setErrors((prev) => ({ ...prev, [draft.id]: "Enter a valid recipient email before retrying." }));
+      return;
+    }
+    if (!(await updateDraft(draft, { recipient, status: "approved", error: null }))) return;
+    onSend?.();
+    window.dispatchEvent(new CustomEvent("jobchain:run-started"));
+  };
+
+  const retryFailedBatch = async (chosen) => {
+    if (!chosen.length) return;
+    const invalid = chosen.filter((draft) => !validEmail(draft.recipient));
+    if (invalid.length) {
+      setBulkError(`Fix ${invalid.length} invalid recipient email${invalid.length === 1 ? "" : "s"} before retrying.`);
+      setErrors((prev) => ({
+        ...prev,
+        ...Object.fromEntries(invalid.map((draft) => [draft.id, "Enter a valid recipient email before retrying."])),
+      }));
+      return;
+    }
+
+    setBulkBusy(true);
+    setBulkError("");
+    const results = await Promise.all(
+      chosen.map((draft) =>
+        supabase
+          .from("application_drafts")
+          .update({ recipient: draft.recipient.trim(), status: "approved", error: null })
+          .eq("id", draft.id)
+          .eq("user_id", user.id)
+          .eq("status", "failed")
+          .select("id, status, approved_at, recipient, error")
+          .single()
+      )
+    );
+    const failedResults = results.filter((result) => result.error);
+    const updated = Object.fromEntries(results.flatMap((result) => result.data ? [[result.data.id, result.data]] : []));
+
+    if (failedResults.length) {
+      console.error("Failed to retry drafts", failedResults[0].error);
+      setBulkError(`${failedResults.length} email${failedResults.length === 1 ? "" : "s"} could not be queued: ${failedResults[0].error.message}`);
+    }
+    setDrafts((prev) => prev.map((draft) => updated[draft.id] ? { ...draft, ...updated[draft.id], dirty: false } : draft));
+    setSelected((prev) => prev.filter((id) => !updated[id]));
+    setBulkBusy(false);
+    onChange?.();
+    if (Object.keys(updated).length) {
+      onSend?.();
+      window.dispatchEvent(new CustomEvent("jobchain:run-started"));
+    }
+  };
+
+  const reconnectGmail = async () => {
+    setGmailBusy(true);
+    setBulkError("");
+    try {
+      await startGmailConnect("/jobpilot?tab=drafts&gmail=connected");
+    } catch (error) {
+      setBulkError(error.message);
+      setGmailBusy(false);
+    }
   };
 
   const toggleSelected = (id) =>
@@ -153,9 +230,10 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
 
   const counts = Object.fromEntries(FILTERS.map((f) => [f, drafts.filter((d) => inFilter(d, f)).length]));
   const visible = drafts.filter((d) => inFilter(d, filter));
-  const selectable = filter === "draft" ? visible.map((d) => d.id) : [];
+  const selectable = ["draft", "failed"].includes(filter) ? visible.map((d) => d.id) : [];
   const selectedVisible = selected.filter((id) => selectable.includes(id));
   const allSelected = selectable.length > 0 && selectedVisible.length === selectable.length;
+  const failedNeedsReconnect = filter === "failed" && visible.some((draft) => gmailAuthFailed(draft.error)) && !gmailReconnected;
 
   return (
     <div>
@@ -190,25 +268,47 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
           </label>
           <span className="text-sm text-zinc-500">{selectedVisible.length} selected</span>
           <div className="ml-auto flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={bulkBusy || !selectedVisible.length}
-              onClick={() => bulkUpdate("approved")}
-              className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap"
-            >
-              Approve selected ({selectedVisible.length})
-            </button>
-            <button
-              type="button"
-              disabled={bulkBusy || !selectedVisible.length}
-              onClick={() => bulkUpdate("rejected")}
-              className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50 whitespace-nowrap"
-            >
-              Reject selected
-            </button>
+            {filter === "failed" ? (
+              failedNeedsReconnect ? (
+                <button type="button" disabled={gmailBusy} onClick={reconnectGmail}
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap">
+                  {gmailBusy ? "Opening Google..." : "Reconnect Gmail to retry"}
+                </button>
+              ) : (
+                <>
+                  <button type="button"
+                    disabled={bulkBusy || !selectedVisible.length || Boolean(sendBlocked)}
+                    onClick={() => retryFailedBatch(visible.filter((draft) => selectedVisible.includes(draft.id)))}
+                    className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50 whitespace-nowrap">
+                    Retry selected ({selectedVisible.length})
+                  </button>
+                  <button type="button" disabled={bulkBusy || Boolean(sendBlocked)}
+                    onClick={() => retryFailedBatch(visible)}
+                    className="rounded-lg border border-purple-500 px-4 py-2 text-sm font-semibold text-purple-300 hover:bg-purple-500/10 transition disabled:opacity-50 whitespace-nowrap">
+                    Retry all failed ({visible.length})
+                  </button>
+                </>
+              )
+            ) : (
+              <>
+                <button type="button" disabled={bulkBusy || !selectedVisible.length}
+                  onClick={() => bulkUpdate("approved")}
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap">
+                  Approve selected ({selectedVisible.length})
+                </button>
+                <button type="button" disabled={bulkBusy || !selectedVisible.length}
+                  onClick={() => bulkUpdate("rejected")}
+                  className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50 whitespace-nowrap">
+                  Reject selected
+                </button>
+              </>
+            )}
           </div>
-          {bulkError ? <p className="w-full text-sm text-red-400">{bulkError}</p> : null}
         </div>
+      ) : null}
+      {bulkError ? <p className="mt-3 text-sm text-red-400">{bulkError}</p> : null}
+      {gmailReconnected && filter === "failed" ? (
+        <p className="mt-3 text-sm text-emerald-400">Gmail reconnected. You can retry the failed emails now.</p>
       ) : null}
 
       {visible.length === 0 ? (
@@ -222,6 +322,8 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
           {visible.map((draft) => {
             const job = draft.discovered_jobs || {};
             const editable = ["draft", "approved", "rejected"].includes(draft.status);
+            const retryable = draft.status === "failed";
+            const reconnectRequired = retryable && gmailAuthFailed(draft.error) && !gmailReconnected;
             const busy = busyId === draft.id;
             return (
               <div key={draft.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6 shadow-lg">
@@ -283,10 +385,17 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
                 ) : null}
 
                 <div className="mt-4 space-y-3">
-                  <p className="text-sm text-zinc-300">
-                    <span className="text-zinc-500">To:</span> {draft.recipient}
+                  <div className="text-sm text-zinc-300">
+                    {retryable ? (
+                      <label className="block">
+                        <span className="mb-1 block text-zinc-500">To (correct it before retrying if needed):</span>
+                        <input type="email" className={inputClass} value={draft.recipient}
+                          disabled={busy || bulkBusy}
+                          onChange={(event) => setDraftField(draft.id, "recipient", event.target.value)} />
+                      </label>
+                    ) : <><span className="text-zinc-500">To:</span> {draft.recipient}</>}
                     <span className="block text-xs text-zinc-500">Found in: {draft.recipient_evidence}</span>
-                  </p>
+                  </div>
                   {typing.includes(draft.id) ? (
                     <TypingDraft
                       subject={draft.subject}
@@ -345,6 +454,27 @@ export default function DraftsPanel({ user, refreshKey = 0, onChange, onSend, se
                       className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50 whitespace-nowrap"
                     >
                       {draft.status === "approved" ? "Send now" : "Approve & send"}
+                    </button>
+                  ) : null}
+                  {retryable && onSend && !reconnectRequired ? (
+                    <button
+                      type="button"
+                      disabled={busy || Boolean(sendBlocked)}
+                      title={sendBlocked || "Queue this failed email and send it again"}
+                      onClick={() => retryFailed(draft)}
+                      className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {busy ? "Retrying..." : "Retry send"}
+                    </button>
+                  ) : null}
+                  {reconnectRequired ? (
+                    <button
+                      type="button"
+                      disabled={gmailBusy}
+                      onClick={reconnectGmail}
+                      className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {gmailBusy ? "Opening Google..." : "Reconnect Gmail"}
                     </button>
                   ) : null}
                   {editable && draft.status !== "approved" ? (

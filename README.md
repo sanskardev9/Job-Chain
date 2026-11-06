@@ -107,6 +107,8 @@ NEXT_PUBLIC_JOBPILOT_WORKER_URL=
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GMAIL_TOKEN_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+CRON_SECRET=
 ```
 
 | Variable | Used by | Notes |
@@ -115,10 +117,14 @@ GMAIL_TOKEN_KEY=
 | `NEXT_PUBLIC_JOBPILOT_WORKER_URL` | Browser | Where the JobPilot worker runs (for "wake up and run now") |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | **Server only** | OAuth Web client for connecting Gmail |
 | `GMAIL_TOKEN_KEY` | **Server only** | Encrypts Gmail tokens; **must match the worker's value** |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Server only** | Lets the protected scheduler queue eligible users' daily searches; never exposed to the browser |
+| `CRON_SECRET` | **Server only** | Authorizes `/api/cron/jobpilot`; Vercel sends it automatically to configured cron requests |
 
 ### 3. Database
 
 Run `supabase/schema.sql` in the Supabase SQL editor. It creates the tables (profiles, jobs, candidate profiles, discovered jobs, application drafts, pipeline runs and events, email accounts and tokens, job pool) along with their Row Level Security policies.
+
+The included Vercel cron checks daily for users active within the last seven days. Each eligible user gets at most one search every 24 hours; JobPilot finds, scores and drafts automatically, but never sends without approval.
 
 ### 4. Run
 
@@ -140,11 +146,12 @@ npm run dev     # http://localhost:3000
 ```text
 src/
   app/
-    jobs/  bookmarks/  applied/  jobpilot/  drafts/  profile/  login/  gmail/
+    home/  jobs/  bookmarks/  applied/  jobpilot/  drafts/  profile/  login/  gmail/
     api/
       jobs/eures/       live EURES search
       gmail/            OAuth URL + code exchange (connect your Gmail)
       jobpilot/wake/    wake the worker for a run
+      cron/jobpilot/    queue daily searches for recently active users
   components/           job cards, tabs, landing, search progress
   lib/                  Supabase client, countries, helpers
 supabase/schema.sql     database schema and RLS policies

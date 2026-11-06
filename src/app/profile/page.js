@@ -34,6 +34,18 @@ const KEYWORD_SUGGESTIONS = [
   "UI Developer", "UI/UX Designer", "DevOps Engineer", "Cloud Engineer", "QA Engineer", "Test Automation Engineer",
   "Data Analyst", "Data Engineer", "Data Scientist", "Machine Learning Engineer", "Junior Developer",
 ];
+const TITLE_SETS = [
+  { match: /front|react|javascript|web|ui/i, titles: ["Frontend Developer", "Frontend Engineer", "React Developer", "React Engineer", "JavaScript Developer", "Web Developer", "UI Developer", "Next.js Developer", "Junior Frontend Developer", "Associate Software Engineer"] },
+  { match: /back|node|api/i, titles: ["Backend Developer", "Backend Engineer", "Node.js Developer", "API Developer", "Software Engineer", "Software Developer", "Junior Backend Developer", "Full Stack Developer"] },
+  { match: /data|machine|analyst/i, titles: ["Data Analyst", "Data Engineer", "Data Scientist", "Machine Learning Engineer", "Business Intelligence Analyst", "Junior Data Analyst", "Analytics Engineer"] },
+  { match: /devops|cloud|platform/i, titles: ["DevOps Engineer", "Cloud Engineer", "Platform Engineer", "Site Reliability Engineer", "Infrastructure Engineer", "Junior DevOps Engineer"] },
+  { match: /mobile|android|ios|flutter|react native/i, titles: ["Mobile Developer", "Mobile Engineer", "Android Developer", "iOS Developer", "Flutter Developer", "React Native Developer", "Junior Mobile Developer"] },
+  { match: /qa|test|quality/i, titles: ["QA Engineer", "Quality Assurance Engineer", "Software Test Engineer", "Test Automation Engineer", "Manual Tester", "Junior QA Engineer"] },
+];
+const recommendedTitles = (form) => {
+  const context = `${form.role_family || ""} ${form.skills || ""}`;
+  return TITLE_SETS.find((set) => set.match.test(context))?.titles || KEYWORD_SUGGESTIONS.slice(0, 10);
+};
 const SEND_MODES = [
   { value: "dry_run", label: "Dry run", hint: "Find and score jobs, draft emails, never send." },
   { value: "review", label: "Review", hint: "Send only drafts you approve." },
@@ -56,6 +68,7 @@ const EMPTY_FORM = {
   keywords: "",
   send_mode: "dry_run",
   max_sends_per_run: 5,
+  auto_search_enabled: true,
 };
 
 const STEPS = [
@@ -538,6 +551,7 @@ export default function ProfilePage() {
         keywords: toList(form.keywords),
         send_mode: form.send_mode,
         max_sends_per_run: Number(form.max_sends_per_run) || 0,
+        auto_search_enabled: form.auto_search_enabled !== false,
       },
       { onConflict: "user_id" }
     );
@@ -817,11 +831,44 @@ export default function ProfilePage() {
               placeholder="Search countries, e.g. Germany"
               onChange={(value) => setField("target_countries", value)} />
           </Field>
-          <Field label="Job titles to search for" hint="Pick from the list or type your own and press Enter. Leave empty to use frontend developer titles.">
+          <div className="rounded-2xl border border-purple-500/30 bg-purple-500/[0.07] p-4">
+            <p className="text-sm font-semibold text-purple-100">Why JobPilot needs several search titles</p>
+            <p className="mt-1 text-sm leading-relaxed text-zinc-400">
+              Employers use different names for the same work. Add every closely related title you would genuinely
+              apply for; JobPilot searches each one separately. Aim for 8–12 relevant variations—not unrelated roles.
+            </p>
+          </div>
+          <Field label="Search titles and variations" hint="Examples: Frontend Developer, Frontend Engineer, React Developer and JavaScript Developer.">
             <TagInput value={form.keywords} suggestions={KEYWORD_SUGGESTIONS} label="Job titles"
-              placeholder="Search titles, e.g. React Developer"
+              placeholder="Add a title, e.g. React Developer"
               onChange={(value) => setField("keywords", value)} />
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className={toList(form.keywords).length >= 8 ? "text-emerald-300" : "text-amber-300"}>
+                {toList(form.keywords).length} added · {toList(form.keywords).length >= 8 ? "Good coverage" : `${8 - toList(form.keywords).length} more recommended`}
+              </span>
+              <button type="button"
+                onClick={() => {
+                  const current = toList(form.keywords);
+                  setField("keywords", [...new Set([...current, ...recommendedTitles(form)])].slice(0, Math.max(12, current.length)).join(", "));
+                }}
+                className="font-semibold text-purple-300 hover:underline">
+                Add recommended titles
+              </button>
+            </div>
           </Field>
+          <div className="flex items-start justify-between gap-4 rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-4">
+            <div>
+              <p className="font-semibold text-zinc-200">Automatic daily search</p>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                JobPilot finds matches and prepares drafts once a day while you are active. It pauses automatically after 7 days away. Nothing is sent without your approval.
+              </p>
+            </div>
+            <button type="button" role="switch" aria-checked={form.auto_search_enabled !== false}
+              onClick={() => setField("auto_search_enabled", form.auto_search_enabled === false)}
+              className={`relative mt-0.5 h-7 w-12 shrink-0 rounded-full transition ${form.auto_search_enabled !== false ? "bg-purple-600" : "bg-zinc-700"}`}>
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${form.auto_search_enabled !== false ? "left-6" : "left-1"}`} />
+            </button>
+          </div>
         </section>
 
         <section className={`rounded-2xl border border-zinc-800 bg-zinc-900 p-6 space-y-4 ${step === "gmail" ? "" : "hidden"}`}>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
-import { GMAIL_STATE_KEY } from "../../../lib/gmailClient";
+import { GMAIL_RETURN_KEY, GMAIL_STATE_KEY } from "../../../lib/gmailClient";
 import Loader from "../../../components/Loader";
 
 export default function GmailCallbackPage() {
@@ -15,7 +15,9 @@ export default function GmailCallbackPage() {
     const finish = async () => {
       const params = new URLSearchParams(window.location.search);
       const expectedState = sessionStorage.getItem(GMAIL_STATE_KEY);
+      const savedReturnTo = sessionStorage.getItem(GMAIL_RETURN_KEY);
       sessionStorage.removeItem(GMAIL_STATE_KEY);
+      sessionStorage.removeItem(GMAIL_RETURN_KEY);
 
       if (params.get("error")) {
         setErrorMessage("Gmail connection was cancelled.");
@@ -48,7 +50,10 @@ export default function GmailCallbackPage() {
         setErrorMessage(body.error || "Could not connect Gmail.");
         return;
       }
-      router.replace("/profile?gmail=connected");
+      const returnTo = savedReturnTo?.startsWith("/") && !savedReturnTo.startsWith("//")
+        ? savedReturnTo
+        : "/profile?gmail=connected";
+      router.replace(returnTo);
     };
 
     finish();

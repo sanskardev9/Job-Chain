@@ -12,9 +12,9 @@ import BottomTabs from "./BottomTabs";
 import { getSetupStatus } from "../lib/setup";
 
 // Pages only for signed-in users. Home, Jobs (view-only preview) and Login are public.
-const PRIVATE_PREFIXES = ["/bookmarks", "/applied", "/jobpilot", "/profile", "/drafts", "/gmail"];
+const PRIVATE_PREFIXES = ["/home", "/bookmarks", "/applied", "/jobpilot", "/profile", "/drafts", "/gmail"];
 // Pages that need the profile details first: new users start with the setup on /profile.
-const NEEDS_PROFILE = ["/jobs", "/bookmarks", "/applied", "/jobpilot"];
+const NEEDS_PROFILE = ["/home", "/jobs", "/bookmarks", "/applied", "/jobpilot"];
 const needsProfile = (pathname) => NEEDS_PROFILE.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 const SETUP_DONE_KEY = "jobchain:profile-ready";
 
@@ -84,6 +84,15 @@ export default function LayoutShell({ children }) {
     return () => window.removeEventListener("jobchain:profile-saved", onSaved);
   }, [userId, pathname]);
 
+  // One lightweight heartbeat makes daily automation available only to people who have used
+  // JobChain recently. The database itself rate-limits this update to once every six hours.
+  useEffect(() => {
+    if (!userId) return;
+    supabase.rpc("mark_user_active").then(({ error }) => {
+      if (error && error.code !== "PGRST202") console.error("Could not record recent activity", error);
+    });
+  }, [userId]);
+
   const toSetup = Boolean(userId) && needsProfile(pathname) && profileReady === false;
 
   useEffect(() => {
@@ -96,10 +105,10 @@ export default function LayoutShell({ children }) {
     if (blocked && !signedOut.current) router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
   }, [blocked, pathname, router]);
 
-  // Signed in: the app, not the website. Home goes straight to Jobs (signing out still lands on Home).
+  // Signed in: the app, not the website. Home goes to the personal command centre.
   const toApp = pathname === "/" && Boolean(session);
   useEffect(() => {
-    if (toApp) router.replace("/jobs");
+    if (toApp) router.replace("/home");
   }, [toApp, router]);
 
   if (pathname === "/login") {

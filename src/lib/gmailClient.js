@@ -1,9 +1,10 @@
 import { supabase } from "./supabaseClient";
 
 export const GMAIL_STATE_KEY = "jobchain:gmail-oauth-state";
+export const GMAIL_RETURN_KEY = "jobchain:gmail-oauth-return";
 
 // Starts Google's consent screen; /gmail/callback finishes the connection.
-export async function startGmailConnect() {
+export async function startGmailConnect(returnTo = "/profile?gmail=connected") {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -11,6 +12,7 @@ export async function startGmailConnect() {
 
   const state = crypto.randomUUID();
   sessionStorage.setItem(GMAIL_STATE_KEY, state);
+  sessionStorage.setItem(GMAIL_RETURN_KEY, returnTo);
 
   const response = await fetch("/api/gmail/auth-url", {
     method: "POST",
