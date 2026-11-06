@@ -1,7 +1,7 @@
-import { requireOwner } from "../../../../lib/serverAuth";
+import { requireUser } from "../../../../lib/serverAuth";
 
 export async function POST(request) {
-  const { admin, user, error } = await requireOwner(request);
+  const { admin, user, error } = await requireUser(request);
   if (error) return error;
   const { subscription } = await request.json().catch(() => ({}));
   if (typeof subscription?.endpoint !== "string" || !subscription.endpoint.startsWith("https://") ||
@@ -17,5 +17,14 @@ export async function POST(request) {
     last_used_at: new Date().toISOString(),
   }, { onConflict: "endpoint" });
   if (saveError) return Response.json({ error: saveError.message }, { status: 500 });
+  return Response.json({ ok: true });
+}
+
+export async function DELETE(request) {
+  const { admin, user, error } = await requireUser(request);
+  if (error) return error;
+  const { endpoint } = await request.json().catch(() => ({}));
+  if (typeof endpoint !== "string") return Response.json({ error: "Invalid subscription." }, { status: 400 });
+  await admin.from("push_subscriptions").delete().eq("endpoint", endpoint).eq("user_id", user.id);
   return Response.json({ ok: true });
 }

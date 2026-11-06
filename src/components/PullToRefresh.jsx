@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowDown, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
-const TRIGGER_DISTANCE = 76;
-const MAX_DISTANCE = 112;
+const TRIGGER_DISTANCE = 64;
+const MAX_DISTANCE = 92;
 
 export default function PullToRefresh() {
   const start = useRef(null);
@@ -68,20 +68,26 @@ export default function PullToRefresh() {
   }, []);
 
   const ready = distance >= TRIGGER_DISTANCE;
+  const visible = distance > 10;
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 top-16 z-[60] flex justify-center overflow-hidden lg:hidden"
-      style={{ height: `${distance}px`, opacity: distance ? 1 : 0 }}
+      aria-label={refreshing ? "Refreshing" : ready ? "Release to refresh" : "Pull to refresh"}
+      className="pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-[60] flex justify-center lg:hidden"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: `translateY(${visible ? Math.min(18, distance * 0.2) : -48}px)`,
+        transition: refreshing || !distance ? "opacity 160ms ease, transform 180ms ease" : "none",
+      }}
     >
-      <div className="mt-2 flex h-10 items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900/95 px-4 text-xs font-semibold text-zinc-200 shadow-xl backdrop-blur">
-        {refreshing ? (
-          <RefreshCw size={15} className="animate-spin text-purple-300" />
-        ) : (
-          <ArrowDown size={15} className={`text-purple-300 transition-transform ${ready ? "rotate-180" : ""}`} />
-        )}
-        {refreshing ? "Refreshing…" : ready ? "Release to refresh" : "Pull to refresh"}
+      <div className={`flex h-10 w-10 items-center justify-center rounded-full border bg-zinc-900/95 shadow-xl backdrop-blur ${ready || refreshing ? "border-purple-400/70" : "border-zinc-700"}`}>
+        <RefreshCw
+          size={17}
+          className={`${refreshing ? "animate-spin text-purple-300" : ready ? "text-purple-300" : "text-zinc-400"}`}
+          style={refreshing ? undefined : { transform: `rotate(${Math.min(distance * 4, 300)}deg)` }}
+        />
       </div>
+      <span className="sr-only">{refreshing ? "Refreshing" : ready ? "Release to refresh" : "Pull to refresh"}</span>
     </div>
   );
 }

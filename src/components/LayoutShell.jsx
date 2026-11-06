@@ -113,11 +113,11 @@ export default function LayoutShell({ children }) {
   }, [toApp, router]);
 
   if (pathname === "/login") {
-    return <div className="min-h-screen bg-zinc-950"><PullToRefresh />{children}</div>;
+    return <div className="min-h-screen bg-zinc-950"><PullToRefresh /><div key={pathname} className="jc-page-enter">{children}</div></div>;
   }
 
   if (pathname.startsWith("/admin")) {
-    return session ? <div className="min-h-screen bg-zinc-950"><PullToRefresh />{children}</div> : (
+    return session ? <div className="min-h-screen bg-zinc-950"><PullToRefresh /><div key={pathname} className="jc-page-enter">{children}</div></div> : (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><PullToRefresh /><Loader size="lg" /></div>
     );
   }
@@ -140,7 +140,7 @@ export default function LayoutShell({ children }) {
             <Loader size="lg" />
           </div>
         ) : (
-          children
+          <div key={pathname} className="jc-page-enter">{children}</div>
         )}
       </main>
       <div className={tabs ? "pb-24 lg:pb-0" : ""}>

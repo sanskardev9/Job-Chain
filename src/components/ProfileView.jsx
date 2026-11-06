@@ -3,6 +3,7 @@
 import {
   Briefcase, FileText, Github, Globe, GraduationCap, Languages, Linkedin, Loader2, MapPin, Pencil, Send,
 } from "lucide-react";
+import NotificationSettings from "./NotificationSettings";
 
 const list = (text) => (text || "").split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -161,6 +162,8 @@ export default function ProfileView({ form, cv, gmail, gmailRequest, levels, sen
           <Row label="Max emails per run">{form.max_sends_per_run}</Row>
         </Card>
       </div>
+
+      <NotificationSettings />
 
       {/* Phones: the top bar only has the avatar, so sign out lives here. */}
       <button

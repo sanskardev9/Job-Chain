@@ -62,8 +62,20 @@ body {
   }
 }
 
+@keyframes pageFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.jc-page-enter {
+  animation: pageFade 160ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [class*="animate-[fadeUp"] {
+    animation: none !important;
+  }
+  .jc-page-enter {
     animation: none !important;
   }
 }

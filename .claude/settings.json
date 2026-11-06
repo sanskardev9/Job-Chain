@@ -5,7 +5,22 @@
       "Bash(gh secret *)",
       "Bash(python3 - *)",
       "Bash(grep -n 'join\\(\", \"\\)} · {job.source}' -B2 -A2 src/app/jobpilot/page.js)",
-      "Bash(grep -n 'apply by {job.deadline}\\\\|required_skills, nice_to_have_skills, blockers, unknowns, deadline' src/components/DraftsPanel.jsx)"
+      "Bash(grep -n 'apply by {job.deadline}\\\\|required_skills, nice_to_have_skills, blockers, unknowns, deadline' src/components/DraftsPanel.jsx)",
+      "Bash(lsof -iTCP -sTCP:LISTEN -n -P)",
+      "Read(//Users/sanskarsingh/Library/Caches/**)",
+      "Read(//Applications/Google Chrome.app/**)",
+      "Bash(sips -g pixelHeight home.png)",
+      "Bash(python3 -c ' *)",
+      "Bash(sed -i '' 's/while \\(a \\\\&\\\\& a !== document.body\\)/while \\(a \\\\&\\\\& a !== document.body \\\\&\\\\& !a.classList.contains\\(\"overflow-x-hidden\"\\)\\)/' bleed.mjs)",
+      "Bash(node bleed.mjs)",
+      "Bash(sed -i '' 's/width: 375/width: Number\\(process.env.W||375\\)/' bleed.mjs)",
+      "Bash(W=320 node bleed.mjs)",
+      "Bash(sed -i '' -e 237s/overflow-x-hidden/overflow-x-clip/ -e '390s/to-zinc-950 p-6 sm:p-10/to-zinc-950 p-4 sm:p-10/' -e '427s/bg-zinc-900\\\\/50 p-6 sm:p-10/bg-zinc-900\\\\/50 p-4 sm:p-10/' -e '523s/px-6 py-10 text-center/px-4 py-10 text-center/' src/app/page.js)",
+      "Bash(sed -i '' '59s/absolute -inset-6 rounded/absolute -inset-2 sm:-inset-6 rounded/' src/components/landing/HeroDemo.jsx)",
+      "Bash(W=375 node bleed.mjs)",
+      "Bash(awk '/^@@ -50,10/{exit} {print}')",
+      "Bash(git apply *)",
+      "Bash(git commit *)"
     ],
     "additionalDirectories": [
       "/Users/sanskarsingh/ME_COde/jobchain-backend/jobpilot/discovery"
