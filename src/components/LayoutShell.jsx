@@ -9,6 +9,7 @@ import Loader from "./Loader";
 import RunTray from "./RunTray";
 import BackToTop from "./BackToTop";
 import BottomTabs from "./BottomTabs";
+import PullToRefresh from "./PullToRefresh";
 import { getSetupStatus } from "../lib/setup";
 
 // Pages only for signed-in users. Home, Jobs (view-only preview) and Login are public.
@@ -112,12 +113,12 @@ export default function LayoutShell({ children }) {
   }, [toApp, router]);
 
   if (pathname === "/login") {
-    return <div className="min-h-screen bg-zinc-950">{children}</div>;
+    return <div className="min-h-screen bg-zinc-950"><PullToRefresh />{children}</div>;
   }
 
   if (pathname.startsWith("/admin")) {
-    return session ? <div className="min-h-screen bg-zinc-950">{children}</div> : (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><Loader size="lg" /></div>
+    return session ? <div className="min-h-screen bg-zinc-950"><PullToRefresh />{children}</div> : (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center"><PullToRefresh /><Loader size="lg" /></div>
     );
   }
 
@@ -131,6 +132,7 @@ export default function LayoutShell({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-950" data-tabs={tabs ? "1" : "0"}>
+      <PullToRefresh />
       <Navbar />
       <main className="flex-1">
         {waiting ? (

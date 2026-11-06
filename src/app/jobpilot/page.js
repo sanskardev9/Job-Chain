@@ -6,12 +6,12 @@ import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 import DraftsPanel from "../../components/DraftsPanel";
 import SearchProgress from "../../components/SearchProgress";
-import { Clock } from "lucide-react";
+import { AlertTriangle, ArrowRight, Clock, FileText, Search } from "lucide-react";
 import { freshnessText, getSearchFreshness, wakeWorker } from "../../lib/jobpilotClient";
 
 const TABS = [
-  { id: "activity", label: "Run & activity" },
-  { id: "drafts", label: "Drafts" },
+  { id: "activity", label: "Overview" },
+  { id: "drafts", label: "Applications" },
 ];
 const ACTIVE = ["queued", "running"];
 const POLL_MS = 3000;
@@ -409,17 +409,17 @@ export default function JobPilotPage() {
         ? "sending is switched off on the worker"
         : null;
   return (
-    <div className="min-h-full bg-zinc-950 px-4 sm:px-6 text-white pb-6">
-      <div className="flex flex-col items-center justify-center w-content">
-        <h1 className="text-3xl font-extrabold mb-3 sm:mb-6 mt-6 sm:mt-6 tracking-tight text-white sm:text-5xl hover:text-purple-500 hover:drop-shadow-[0_0_15px_rgba(168,85,247,0.9)] transition duration-300">
+    <div className="min-h-full bg-zinc-950 px-4 pb-6 text-white sm:px-6">
+      <div className="mx-auto max-w-5xl pt-5 sm:pt-7">
+        <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-5xl">
           JobPilot
         </h1>
-        <p className="text-zinc-400 mb-3 text-sm sm:text-base text-center">
-          Finds matching jobs, drafts applications, and sends only what you approve.
+        <p className="mt-1 max-w-xl text-sm text-zinc-400 sm:mt-2 sm:text-base">
+          Your daily job search, applications and sending—all in one place.
         </p>
       </div>
 
-      <div className="max-w-5xl mx-auto py-4 space-y-6">
+      <div className="mx-auto max-w-5xl space-y-5 py-4 sm:space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <section className="lg:col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -495,13 +495,13 @@ export default function JobPilotPage() {
               </p>
             ) : null}
 
-            <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="mt-5 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
               {running ? (
                 <button
                   type="button"
                   onClick={stopRun}
                   disabled={busy || latestRun.status === "cancelled"}
-                  className="whitespace-nowrap rounded-xl border border-red-500/60 px-4 py-2.5 font-semibold text-red-300 hover:bg-red-500/10 transition disabled:opacity-50"
+                  className="col-span-2 min-h-12 whitespace-nowrap rounded-xl border border-red-500/60 px-4 py-2.5 font-semibold text-red-300 transition hover:bg-red-500/10 disabled:opacity-50 sm:col-auto"
                 >
                   Stop
                 </button>
@@ -511,39 +511,47 @@ export default function JobPilotPage() {
                     type="button"
                     onClick={() => startRun("search")}
                     disabled={busy || !profileReady}
-                    className="whitespace-nowrap rounded-xl bg-white px-4 py-2.5 font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50"
+                    className="col-span-2 flex min-h-12 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-purple-600 px-4 py-3 font-semibold text-white transition hover:bg-purple-500 disabled:opacity-50 sm:col-auto"
                   >
-                    Find jobs now
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => startRun("send")}
-                    disabled={busy || !canSend}
-                    title={sendHint}
-                    className="whitespace-nowrap rounded-xl border border-zinc-700 px-4 py-2.5 font-semibold hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50"
-                  >
-                    Send approved ({setup?.approved || 0})
+                    <Search size={17} /> {busy ? "Starting…" : "Search for new jobs"}
                   </button>
                   {setup?.failed ? (
                     <button type="button" onClick={() => { setDraftFilter("failed"); setTab("drafts"); }}
-                      className="whitespace-nowrap rounded-xl border border-red-500/50 px-4 py-2.5 font-semibold text-red-300 hover:bg-red-500/10 transition">
-                      Retry failed ({setup.failed})
+                      className="col-span-2 flex min-h-12 items-center justify-between rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-2.5 text-left text-red-200 transition hover:bg-red-500/10 sm:col-auto sm:gap-2">
+                      <span className="flex items-center gap-2 font-semibold"><AlertTriangle size={17} /> Review {setup.failed} failed</span>
+                      <ArrowRight size={16} />
                     </button>
                   ) : null}
+                  {setup?.approved ? (
+                    <button
+                      type="button"
+                      onClick={() => startRun("send")}
+                      disabled={busy || !canSend}
+                      title={sendHint}
+                      className="flex min-h-12 items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-purple-500/50 px-3 py-2.5 text-sm font-semibold text-purple-200 transition hover:bg-purple-500/10 disabled:opacity-50 sm:px-4 sm:text-base"
+                    >
+                      Send {setup.approved} approved
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setTab("drafts")}
+                      className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-zinc-700 px-3 py-2.5 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-800 sm:px-4 sm:text-base">
+                      <FileText size={17} /> Review drafts
+                    </button>
+                  )}
                   <Link
                     href="/jobs"
-                    className="whitespace-nowrap rounded-xl border border-zinc-700 px-4 py-2.5 font-semibold hover:border-purple-500 hover:text-purple-300 transition"
+                    className="flex min-h-12 items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-zinc-700 px-3 py-2.5 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-800 sm:px-4 sm:text-base"
                   >
-                    See my matches →
+                    View matches <ArrowRight size={16} />
                   </Link>
                 </>
               )}
             </div>
-            {!running ? <p className="mt-2 text-xs text-zinc-500">{sendHint}</p> : null}
+            {!running && setup?.approved > 0 && !canSend ? <p className="mt-2 text-xs text-zinc-500">To send: {sendHint}</p> : null}
             {actionError ? <p className="mt-2 text-sm text-red-400">{actionError}</p> : null}
           </section>
 
-          <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
+          <section className="hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6 lg:block">
             <h2 className="text-xl font-semibold">Setup</h2>
             <ul className="mt-4 space-y-3 text-sm">
               <CheckRow ok={profileReady} label="Profile filled in"
@@ -575,18 +583,40 @@ export default function JobPilotPage() {
                     : "Shown as off while the worker sleeps; checked again when it wakes"} />
             </ul>
           </section>
+
+          <details className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 lg:hidden">
+            <summary className="flex min-h-8 list-none items-center justify-between gap-3 font-semibold text-zinc-100">
+              <span>Setup</span>
+              <span className="text-xs font-medium text-zinc-400">Tap to check</span>
+            </summary>
+            <ul className="mt-4 space-y-3 border-t border-zinc-800 pt-4 text-sm">
+              <CheckRow ok={profileReady} label="Profile filled in"
+                hint={profileReady ? `${profile.skills.length} skills, ${profile.keywords?.length || 0} keywords` : "Add your skills and keywords"}
+                href={profileReady ? null : "/profile"} />
+              <CheckRow ok={Boolean(profile?.cv_storage_path)} label="CV uploaded"
+                hint={profile?.cv_storage_path ? null : "Needed to send applications"} href={profile?.cv_storage_path ? null : "/profile"} />
+              <CheckRow ok={Boolean(setup?.gmail)} label={setup?.gmail ? "Gmail connected" : "Gmail not connected"}
+                hint={setup?.gmail || "Needed to send applications"} href={setup?.gmail ? null : "/profile"} />
+              <CheckRow ok={profile?.send_mode === "review"} label="Sending preferences"
+                hint={profile?.send_mode === "review" ? `Review first · Max ${profile.max_sends_per_run}` : "Change dry run to Review in Profile"}
+                href={profile?.send_mode === "review" ? null : "/profile"} />
+              <CheckRow ok={Boolean(setup?.workerOnline) || Boolean(WORKER_URL && setup?.workerLastSeen)}
+                label={setup?.workerOnline ? "JobPilot ready" : WORKER_URL && setup?.workerLastSeen ? "JobPilot wakes automatically" : "JobPilot offline"}
+                hint={setup?.workerOnline ? "Ready to search" : "May take about a minute to wake"} />
+            </ul>
+          </details>
         </div>
 
-        <div className="-mx-1 flex gap-2 overflow-x-auto border-b border-zinc-800 px-1 pb-3 sm:flex-wrap sm:overflow-visible">
+        <div className="grid grid-cols-2 rounded-xl bg-zinc-900 p-1 sm:flex sm:w-fit sm:gap-1">
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+              className={`min-h-11 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition ${
                 tab === t.id
-                  ? "border-purple-500 text-purple-300 bg-purple-500/10"
-                  : "border-zinc-700 text-zinc-300 hover:border-purple-500 hover:text-purple-300"
+                  ? "bg-purple-600 text-white shadow-sm"
+                  : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
               }`}
             >
               {t.label}
@@ -602,7 +632,7 @@ export default function JobPilotPage() {
                 <h2 className="text-lg font-semibold">Live log</h2>
                 {running ? <span className="text-xs text-blue-300 animate-pulse">updating…</span> : null}
               </div>
-              <div ref={logRef} className="mt-3 max-h-[28rem] overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed">
+              <div ref={logRef} data-no-pull-refresh className="mt-3 max-h-[28rem] overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-xs leading-relaxed">
                 {events.length === 0 ? (
                   <p className="text-zinc-500">
                     {latestRun ? "No log entries for this run yet." : "Logs of what JobPilot searches, opens and finds appear here."}

@@ -237,7 +237,14 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
 
   return (
     <div>
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap sm:overflow-visible">
+      <label className="block sm:hidden">
+        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-500">Show applications</span>
+        <select value={filter} onChange={(event) => setFilter(event.target.value)}
+          className="min-h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-white focus:border-purple-500 focus:outline-none">
+          {FILTERS.map((f) => <option key={f} value={f}>{f === "draft" ? "To review" : f[0].toUpperCase() + f.slice(1)} ({counts[f]})</option>)}
+        </select>
+      </label>
+      <div className="hidden gap-2 sm:flex sm:flex-wrap">
         {FILTERS.map((f) => (
           <button
             key={f}
@@ -255,8 +262,9 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
       </div>
 
       {selectable.length ? (
-        <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
-          <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+        <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-900 p-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3 sm:px-4">
+          <div className="flex items-center justify-between gap-3">
+          <label className="flex min-h-10 items-center gap-2 text-sm text-zinc-300 cursor-pointer">
             <input
               type="checkbox"
               className="h-4 w-4 accent-purple-600"
@@ -267,25 +275,26 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
             Select all ({selectable.length})
           </label>
           <span className="text-sm text-zinc-500">{selectedVisible.length} selected</span>
-          <div className="ml-auto flex flex-wrap gap-2">
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:ml-auto sm:mt-0 sm:flex sm:flex-wrap">
             {filter === "failed" ? (
               failedNeedsReconnect ? (
                 <button type="button" disabled={gmailBusy} onClick={reconnectGmail}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap">
+                  className="col-span-2 min-h-11 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-purple-600 hover:text-white disabled:opacity-50 whitespace-nowrap">
                   {gmailBusy ? "Opening Google..." : "Reconnect Gmail to retry"}
                 </button>
               ) : (
                 <>
+                  <button type="button" disabled={bulkBusy || Boolean(sendBlocked)}
+                    onClick={() => retryFailedBatch(visible)}
+                    className="col-span-2 min-h-11 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-500 disabled:opacity-50 whitespace-nowrap sm:col-auto">
+                    {bulkBusy ? "Retrying…" : `Retry all ${visible.length}`}
+                  </button>
                   <button type="button"
                     disabled={bulkBusy || !selectedVisible.length || Boolean(sendBlocked)}
                     onClick={() => retryFailedBatch(visible.filter((draft) => selectedVisible.includes(draft.id)))}
-                    className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50 whitespace-nowrap">
+                    className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-800 disabled:opacity-50 whitespace-nowrap sm:px-4">
                     Retry selected ({selectedVisible.length})
-                  </button>
-                  <button type="button" disabled={bulkBusy || Boolean(sendBlocked)}
-                    onClick={() => retryFailedBatch(visible)}
-                    className="rounded-lg border border-purple-500 px-4 py-2 text-sm font-semibold text-purple-300 hover:bg-purple-500/10 transition disabled:opacity-50 whitespace-nowrap">
-                    Retry all failed ({visible.length})
                   </button>
                 </>
               )
@@ -293,12 +302,12 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
               <>
                 <button type="button" disabled={bulkBusy || !selectedVisible.length}
                   onClick={() => bulkUpdate("approved")}
-                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap">
+                  className="min-h-11 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black transition hover:bg-purple-600 hover:text-white disabled:opacity-50 whitespace-nowrap sm:px-4">
                   Approve selected ({selectedVisible.length})
                 </button>
                 <button type="button" disabled={bulkBusy || !selectedVisible.length}
                   onClick={() => bulkUpdate("rejected")}
-                  className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50 whitespace-nowrap">
+                  className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-sm transition hover:border-red-500 hover:text-red-300 disabled:opacity-50 whitespace-nowrap sm:px-4">
                   Reject selected
                 </button>
               </>
@@ -306,6 +315,7 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
           </div>
         </div>
       ) : null}
+      {selectable.length && sendBlocked ? <p className="mt-2 text-xs text-zinc-500">Sending is unavailable: {sendBlocked}.</p> : null}
       {bulkError ? <p className="mt-3 text-sm text-red-400">{bulkError}</p> : null}
       {gmailReconnected && filter === "failed" ? (
         <p className="mt-3 text-sm text-emerald-400">Gmail reconnected. You can retry the failed emails now.</p>
@@ -426,12 +436,12 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
                 {errors[draft.id] ? <p className="mt-3 text-sm text-red-400">{errors[draft.id]}</p> : null}
                 {editable && sendBlocked ? <p className="mt-3 text-xs text-zinc-500">To send: {sendBlocked}</p> : null}
 
-                <div className="mt-4 flex flex-wrap items-center gap-2">
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
                   <a
                     href={job.source_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="rounded-lg bg-zinc-800 px-4 py-2 text-sm font-semibold hover:bg-purple-600 transition whitespace-nowrap"
+                    className="flex min-h-11 items-center justify-center rounded-lg bg-zinc-800 px-3 py-2 text-sm font-semibold transition hover:bg-purple-600 whitespace-nowrap sm:px-4"
                   >
                     View vacancy
                   </a>
@@ -440,7 +450,7 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
                       type="button"
                       disabled={busy}
                       onClick={() => updateDraft(draft, { subject: draft.subject, body: draft.body })}
-                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50 whitespace-nowrap"
+                      className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-sm transition hover:border-purple-500 hover:text-purple-300 disabled:opacity-50 whitespace-nowrap sm:px-4"
                     >
                       Save changes
                     </button>
@@ -451,7 +461,7 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
                       disabled={busy || Boolean(sendBlocked)}
                       title={sendBlocked || "Approve and send now"}
                       onClick={() => approveAndSend(draft)}
-                      className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50 whitespace-nowrap"
+                      className="col-span-2 min-h-11 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-500 disabled:opacity-50 whitespace-nowrap sm:col-auto"
                     >
                       {draft.status === "approved" ? "Send now" : "Approve & send"}
                     </button>
@@ -462,9 +472,9 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
                       disabled={busy || Boolean(sendBlocked)}
                       title={sendBlocked || "Queue this failed email and send it again"}
                       onClick={() => retryFailed(draft)}
-                      className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 transition disabled:opacity-50 whitespace-nowrap"
+                      className="col-span-2 min-h-11 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-purple-500 disabled:opacity-50 whitespace-nowrap sm:col-auto"
                     >
-                      {busy ? "Retrying..." : "Retry send"}
+                      {busy ? "Retrying…" : "Retry this email"}
                     </button>
                   ) : null}
                   {reconnectRequired ? (
@@ -472,7 +482,7 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
                       type="button"
                       disabled={gmailBusy}
                       onClick={reconnectGmail}
-                      className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap"
+                      className="col-span-2 min-h-11 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-purple-600 hover:text-white disabled:opacity-50 whitespace-nowrap sm:col-auto"
                     >
                       {gmailBusy ? "Opening Google..." : "Reconnect Gmail"}
                     </button>
@@ -482,7 +492,7 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
                       type="button"
                       disabled={busy}
                       onClick={() => updateDraft(draft, { subject: draft.subject, body: draft.body, status: "approved" })}
-                      className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-purple-600 hover:text-white transition disabled:opacity-50 whitespace-nowrap"
+                      className="min-h-11 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-black transition hover:bg-purple-600 hover:text-white disabled:opacity-50 whitespace-nowrap sm:px-4"
                     >
                       Approve
                     </button>
@@ -492,7 +502,7 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
                       type="button"
                       disabled={busy}
                       onClick={() => updateDraft(draft, { status: "draft" })}
-                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-purple-500 hover:text-purple-300 transition disabled:opacity-50 whitespace-nowrap"
+                      className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-sm transition hover:border-purple-500 hover:text-purple-300 disabled:opacity-50 whitespace-nowrap sm:px-4"
                     >
                       Undo approval
                     </button>
@@ -502,7 +512,7 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
                       type="button"
                       disabled={busy}
                       onClick={() => updateDraft(draft, { status: "rejected" })}
-                      className="rounded-lg border border-zinc-700 px-4 py-2 text-sm hover:border-red-500 hover:text-red-300 transition disabled:opacity-50 whitespace-nowrap"
+                      className="min-h-11 rounded-lg border border-zinc-700 px-3 py-2 text-sm transition hover:border-red-500 hover:text-red-300 disabled:opacity-50 whitespace-nowrap sm:px-4"
                     >
                       Reject
                     </button>

@@ -10,6 +10,14 @@ export const metadata = {
   appleWebApp: { capable: true, title: "Job-Chain", statusBarStyle: "default" },
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#09090b",
+  colorScheme: "dark",
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" suppressHydrationWarning>
