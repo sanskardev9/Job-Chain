@@ -6,7 +6,7 @@ import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 import DraftsPanel from "../../components/DraftsPanel";
 import SearchProgress from "../../components/SearchProgress";
-import { AlertTriangle, ArrowRight, Clock, FileText, Search } from "lucide-react";
+import { AlertTriangle, ArrowRight, Clock, FileText, Search, X } from "lucide-react";
 import { freshnessText, getSearchFreshness, wakeWorker } from "../../lib/jobpilotClient";
 
 const TABS = [
@@ -14,6 +14,17 @@ const TABS = [
   { id: "drafts", label: "Applications" },
 ];
 const ACTIVE = ["queued", "running"];
+
+// Raw worker/database errors in words people understand.
+function friendlyRunError(error) {
+  if (/application_drafts_one_send_per_job/.test(error)) {
+    return "Nothing was sent twice: a duplicate draft for a job you already applied to was blocked. Send again to continue with the rest.";
+  }
+  if (/^StorageError:|HTTP \d{3}/.test(error)) {
+    return "JobPilot couldn't save its progress. Try again in a minute.";
+  }
+  return error;
+}
 const POLL_MS = 3000;
 const WORKER_ONLINE_SECONDS = 60;
 const WORKER_URL = process.env.NEXT_PUBLIC_JOBPILOT_WORKER_URL;
@@ -165,6 +176,15 @@ export default function JobPilotPage() {
   // Applications being written show in the corner tray; this panel follows searches and sends.
   const latestRun = runs.find((run) => run.kind !== "draft") || null;
   const running = latestRun && ACTIVE.includes(latestRun.status);
+  // A run's error can be dismissed; remembered per run so it stays gone after a reload.
+  const [dismissedRunId, setDismissedRunId] = useState(() => {
+    try { return localStorage.getItem("jc-dismissed-run-error"); } catch { return null; }
+  });
+  const dismissRunError = () => {
+    setDismissedRunId(latestRun.id);
+    try { localStorage.setItem("jc-dismissed-run-error", latestRun.id); } catch {}
+  };
+  const runError = latestRun?.error && latestRun.id !== dismissedRunId ? friendlyRunError(latestRun.error) : null;
   // The search funnel stays visible after a send run, so the scale of each search isn't hidden.
   const searches = runs.filter((run) => run.kind === "search" && Object.keys(run.counts || {}).length);
   const foundSomething = (run) => (run.counts.new ?? 0) + (run.counts.updated ?? 0) > 0;
@@ -447,7 +467,16 @@ export default function JobPilotPage() {
                   ? `Last run ${dateTime(latestRun.finished_at || latestRun.requested_at)}: ${latestRun.current_step || latestRun.status}`
                   : "No runs yet. Start your first search below."}
             </p>
-            {latestRun?.error ? <p className="mt-2 text-sm text-red-400">{latestRun.error}</p> : null}
+            {runError ? (
+              <div className="mt-3 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3">
+                <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-300" />
+                <p className="min-w-0 flex-1 break-words text-sm text-red-200">{runError}</p>
+                <button type="button" onClick={dismissRunError} aria-label="Dismiss error"
+                  className="-m-1 shrink-0 rounded-lg p-1 text-red-300 transition hover:bg-red-500/20">
+                  <X size={16} />
+                </button>
+              </div>
+            ) : null}
 
             {setup?.totals ? (
               <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">

@@ -27,7 +27,7 @@ function Stat({ value, label, tone = "text-white" }) {
 function Match({ job }) {
   const reasons = [...(job.matched_skills || []).slice(0, 3), ...(job.unknowns || []).slice(0, 1)];
   return (
-    <article className="group rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 transition hover:-translate-y-0.5 hover:border-purple-500/50">
+    <article className="group min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 transition sm:p-5 hover:-translate-y-0.5 hover:border-purple-500/50">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="truncate font-semibold text-white">{job.title}</h3>
@@ -139,24 +139,24 @@ export default function HomePage() {
   return (
     <div className="min-h-full bg-zinc-950 px-4 pb-10 text-white sm:px-6">
       <div className="mx-auto max-w-6xl py-7 sm:py-10">
-        <section className="relative overflow-hidden rounded-3xl border border-purple-500/25 bg-gradient-to-br from-purple-600/15 via-zinc-900 to-zinc-900 p-6 sm:p-8">
+        <section className="relative overflow-hidden rounded-3xl border border-purple-500/25 bg-gradient-to-br from-purple-600/15 via-zinc-900 to-zinc-900 p-5 sm:p-8">
           <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-purple-500/15 blur-3xl" />
-          <div className="relative flex flex-col justify-between gap-6 md:flex-row md:items-end">
-            <div>
+          <div className="relative flex flex-col justify-between gap-5 md:flex-row md:items-end">
+            <div className="min-w-0">
               <p className="text-sm font-semibold text-purple-300">Your JobChain home</p>
               <h1 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Welcome back, {firstName}.</h1>
               <p className="mt-3 max-w-xl text-zinc-400">{nextAction?.note}</p>
               <Link href={nextAction?.href || "/jobs"}
-                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white px-5 py-3 font-semibold text-black transition hover:bg-purple-600 hover:text-white">
+                className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 font-semibold sm:inline-flex sm:w-auto text-black transition hover:bg-purple-600 hover:text-white">
                 {nextAction?.label} <ArrowRight size={17} />
               </Link>
             </div>
-            <div className="flex items-center gap-3 rounded-2xl border border-zinc-700/70 bg-zinc-950/70 px-4 py-3">
-              <span className={`flex h-10 w-10 items-center justify-center rounded-full ${running ? "bg-purple-500/20 text-purple-300" : "bg-emerald-500/15 text-emerald-300"}`}>
+            <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-zinc-700/70 bg-zinc-950/70 p-3 sm:px-4">
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${running ? "bg-purple-500/20 text-purple-300" : "bg-emerald-500/15 text-emerald-300"}`}>
                 {running ? <RefreshCw size={19} className="animate-spin" /> : automationReady ? <Sparkles size={19} /> : <AlertTriangle size={19} />}
               </span>
-              <div>
-                <p className="text-sm font-semibold">{running ? latestRun.current_step || "JobPilot is working" : automationReady ? "Daily search is on" : "Automation needs setup"}</p>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold">{running ? latestRun.current_step || "JobPilot is working" : automationReady ? "Daily search is on" : "Automation needs setup"}</p>
                 <p className="text-xs text-zinc-500">{running ? "Your results will appear automatically" : automationReady ? "Pauses after 7 days away" : "Add your CV and search titles"}</p>
               </div>
             </div>
@@ -191,17 +191,17 @@ export default function HomePage() {
           <Stat value={counts.offers || 0} label="offers" tone="text-emerald-300" />
         </section>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1.55fr_0.85fr]">
-          <section className="rounded-3xl border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6">
-            <div className="flex items-center justify-between gap-3">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,0.85fr)]">
+          <section className="min-w-0 sm:rounded-3xl sm:border sm:border-zinc-800 sm:bg-zinc-900/50 sm:p-6">
+            <div className="flex items-end justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-purple-300">Chosen for you</p>
                 <h2 className="mt-1 text-xl font-bold">Best new matches</h2>
               </div>
-              <Link href="/jobs?tab=forYou" className="text-sm font-semibold text-zinc-400 hover:text-purple-300">See all →</Link>
+              <Link href="/jobs?tab=forYou" className="shrink-0 whitespace-nowrap text-sm font-semibold text-zinc-400 hover:text-purple-300">See all →</Link>
             </div>
             {data.matches.length ? (
-              <div className="mt-5 grid gap-3">{data.matches.map((job) => <Match key={job.id} job={job} />)}</div>
+              <div className="mt-4 grid grid-cols-1 gap-3">{data.matches.map((job) => <Match key={job.id} job={job} />)}</div>
             ) : (
               <div className="mt-5 rounded-2xl border border-dashed border-zinc-700 px-5 py-10 text-center">
                 <BriefcaseBusiness className="mx-auto text-zinc-600" />
@@ -211,7 +211,7 @@ export default function HomePage() {
             )}
           </section>
 
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             <section className="rounded-3xl border border-zinc-800 bg-zinc-900/50 p-5 sm:p-6">
               <div className="flex items-center gap-2"><Zap size={18} className="fill-current text-purple-300" /><h2 className="font-semibold">JobPilot automation</h2></div>
               <div className="mt-5 space-y-4 text-sm">
