@@ -17,8 +17,8 @@ export default function Select({ options, value, onChange, placeholder = "Choose
     const close = (e) => {
       if (!rootRef.current?.contains(e.target)) setOpen(false);
     };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
   }, [open]);
 
   useEffect(() => {

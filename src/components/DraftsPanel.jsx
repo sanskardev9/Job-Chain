@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 import Loader from "./Loader";
+import Select from "./Select";
 import TypingDraft, { markTyped, shouldType } from "./TypingDraft";
 import { jobDates } from "../lib/dates";
 import { startGmailConnect } from "../lib/gmailClient";
@@ -237,13 +238,19 @@ export default function DraftsPanel({ user, refreshKey = 0, initialFilter = "dra
 
   return (
     <div>
-      <label className="block sm:hidden">
+      <div className="sm:hidden">
         <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-zinc-500">Show applications</span>
-        <select value={filter} onChange={(event) => setFilter(event.target.value)}
-          className="min-h-12 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-4 text-sm font-semibold text-white focus:border-purple-500 focus:outline-none">
-          {FILTERS.map((f) => <option key={f} value={f}>{f === "draft" ? "To review" : f[0].toUpperCase() + f.slice(1)} ({counts[f]})</option>)}
-        </select>
-      </label>
+        <Select
+          label="Show applications"
+          value={filter}
+          onChange={setFilter}
+          className="w-full min-h-12"
+          options={FILTERS.map((f) => ({
+            value: f,
+            label: `${f === "draft" ? "To review" : f[0].toUpperCase() + f.slice(1)} (${counts[f]})`,
+          }))}
+        />
+      </div>
       <div className="hidden gap-2 sm:flex sm:flex-wrap">
         {FILTERS.map((f) => (
           <button

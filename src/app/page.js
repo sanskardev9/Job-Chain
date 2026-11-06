@@ -234,7 +234,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-full overflow-x-hidden bg-zinc-950 text-white">
+    <div className="min-h-full overflow-x-clip bg-zinc-950 text-white">
       <IntroScreen />
       {/* Reading progress, just under the navbar. */}
       <div aria-hidden className="fixed inset-x-0 top-16 z-40 h-0.5 bg-transparent">
@@ -387,7 +387,7 @@ export default function Home() {
 
       {/* Bulk apply, part 1: the benefit, with the batch shown going out. */}
       <section className="px-4 sm:px-6 py-12">
-        <div className="spotlight mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-600/15 via-zinc-900 to-zinc-950 p-6 sm:p-10 lg:grid-cols-2 lg:gap-14">
+        <div className="spotlight mx-auto grid max-w-6xl grid-cols-1 items-center gap-10 rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-600/15 via-zinc-900 to-zinc-950 p-4 sm:p-10 lg:grid-cols-2 lg:gap-14">
           <div>
             <p className="inline-flex items-center gap-2 rounded-full border border-purple-500/40 bg-purple-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-purple-200">
               <Layers size={14} /> Bulk apply
@@ -424,7 +424,7 @@ export default function Home() {
 
       {/* Bulk apply, part 2: the workflow, as a compact grid. */}
       <section className="px-4 sm:px-6 pb-16">
-        <div className="spotlight mx-auto max-w-6xl rounded-3xl border border-zinc-800 bg-zinc-900/50 p-6 sm:p-10">
+        <div className="spotlight mx-auto max-w-6xl rounded-3xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-10">
           <p className="inline-block rounded-full bg-purple-500/15 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-purple-300">
             How bulk apply works
           </p>
@@ -520,7 +520,7 @@ export default function Home() {
       {/* The only call to action, after the visitor has seen what they get. */}
       <section className="px-4 sm:px-6 pb-24 pt-8">
         <Reveal from="scale"
-          className="spotlight relative mx-auto max-w-3xl overflow-hidden rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-600/20 via-zinc-900 to-zinc-900 px-6 py-10 text-center sm:px-10 sm:py-12">
+          className="spotlight relative mx-auto max-w-3xl overflow-hidden rounded-3xl border border-purple-500/30 bg-gradient-to-br from-purple-600/20 via-zinc-900 to-zinc-900 px-4 py-10 text-center sm:px-10 sm:py-12">
 
           <div className="relative">
             <h2 className="mx-auto max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">

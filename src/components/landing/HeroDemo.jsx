@@ -56,7 +56,7 @@ export default function HeroDemo({ persona = SAMPLE_PERSONA }) {
 
   return (
     <div onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)} className="relative">
-      <div className="pointer-events-none absolute -inset-6 rounded-[2rem] bg-purple-600/20 blur-3xl" />
+      <div className="pointer-events-none absolute -inset-2 sm:-inset-6 rounded-[2rem] bg-purple-600/20 blur-3xl" />
       <div className="relative">
         {/* All scenes share one grid cell, so the box is always as tall as the tallest scene
             (an invisible, fully typed email included) and the page never shifts. */}
