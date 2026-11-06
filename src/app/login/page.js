@@ -8,7 +8,6 @@ import { animate } from "animejs";
 import { supabase } from "../../lib/supabaseClient";
 import Loader from "../../components/Loader";
 import { Eye, EyeOff } from "lucide-react";
-import EuFlag from "../../components/EuFlag";
 
 function LoginPageContent() {
   const [loading, setLoading] = useState(false);
@@ -148,7 +147,6 @@ function LoginPageContent() {
               <Image src="/chain.png" alt="JobChain logo" width={74} height={82} style={{ width: "auto", height: "auto" }} priority />
               <h1 className="text-6xl font-extrabold tracking-tight text-white">Job-Chain</h1>
             </Link>
-            <p className="mt-4 inline-flex items-center gap-2 text-lg text-zinc-400"><EuFlag className="h-4 w-6" /> Your next job, anywhere in Europe.</p>
           </div>
         </div>
 

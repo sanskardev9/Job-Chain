@@ -2,17 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Bell, Check, ChevronRight, CircleUserRound, Clock3, Home, LayoutDashboard,
   Mail, RefreshCw, Search, ShieldAlert, ShieldCheck, Users, X,
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { enableAdminPush, pushSupported } from "../../lib/pushClient";
+import { switchMode } from "../../lib/adminMode";
+import AdminNotifications from "../../components/admin/AdminNotifications";
 
 const TABS = [
   { id: "overview", label: "Overview", Icon: LayoutDashboard },
   { id: "requests", label: "Gmail requests", Icon: Mail },
   { id: "users", label: "Users", Icon: Users },
+  { id: "notifications", label: "Notify", Icon: Bell },
 ];
 const ago = (value) => {
   if (!value) return "Never";
@@ -47,9 +51,16 @@ function Stat({ label, value, hint, Icon, tone = "purple" }) {
 }
 
 export default function AdminPage() {
-  const [tab, setTab] = useState(() =>
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("tab") === "requests" ? "requests" : "overview"
-  );
+  const router = useRouter();
+  const [tab, setTab] = useState(() => {
+    const wanted = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("tab") : null;
+    return TABS.some((t) => t.id === wanted) ? wanted : "overview";
+  });
+  const backToApp = (event) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+    event.preventDefault();
+    switchMode(router, false);
+  };
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -124,17 +135,17 @@ export default function AdminPage() {
             className="flex w-full items-center gap-2 rounded-xl border border-zinc-700 px-3 py-2.5 text-sm text-zinc-300 hover:border-purple-500 disabled:opacity-50">
             <Bell size={17} /> {busy === "push" ? "Enabling..." : "Enable request alerts"}
           </button>
-          <Link href="/home" className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white"><Home size={17} /> Back to JobChain</Link>
+          <Link href="/home" onClick={backToApp} className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white"><Home size={17} /> Back to JobChain</Link>
         </div>
       </aside>
 
       <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur md:hidden">
         <ShieldCheck className="text-purple-300" /><strong className="flex-1">JobChain Admin</strong>
         <button type="button" onClick={enableNotifications} className="rounded-lg border border-zinc-700 p-2"><Bell size={17} /></button>
-        <Link href="/home" className="rounded-lg border border-zinc-700 p-2"><Home size={17} /></Link>
+        <Link href="/home" onClick={backToApp} aria-label="Back to JobChain" className="rounded-lg border border-zinc-700 p-2"><Home size={17} /></Link>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 md:py-9">
+      <main key={tab} className="jc-page-enter mx-auto max-w-6xl px-4 py-6 pb-24 sm:px-6 md:py-9">
         {error ? <div className="mb-5 flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200"><span>{error}</span><button onClick={load} className="font-semibold underline">Retry</button></div> : null}
         {!data ? <div className="flex min-h-[60vh] items-center justify-center"><RefreshCw className="animate-spin text-purple-300" /></div> : tab === "overview" ? (
           <>
@@ -169,7 +180,17 @@ export default function AdminPage() {
                         <button disabled={busy} onClick={() => updateRequest(request.id, "approved")} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold hover:bg-emerald-500 disabled:opacity-50"><Check size={16} /> Mark added & approve</button>
                         <button disabled={busy} onClick={() => updateRequest(request.id, "rejected")} className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/40 px-4 py-2.5 text-sm font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-50"><X size={16} /> Needs correction</button>
                       </div>
-                    ) : null}
+                    ) : request.status === "approved" || request.status === "connected" ? (
+                      <button disabled={busy}
+                        onClick={() => {
+                          const what = request.status === "connected" ? "This also disconnects their Gmail, so JobPilot stops sending for them." : "They won't be able to connect Gmail.";
+                          if (window.confirm(`Revoke Gmail access for ${request.requested_email}? ${what}`)) updateRequest(request.id, "rejected");
+                        }}
+                        className="inline-flex items-center gap-1.5 self-start rounded-xl border border-red-500/40 px-4 py-2.5 text-sm font-semibold text-red-300 hover:bg-red-500/10 disabled:opacity-50"><X size={16} /> Revoke access</button>
+                    ) : (
+                      <button disabled={busy} onClick={() => updateRequest(request.id, "pending")}
+                        className="inline-flex items-center gap-1.5 self-start rounded-xl border border-zinc-700 px-4 py-2.5 text-sm font-semibold text-zinc-300 hover:border-purple-500 disabled:opacity-50">Move back to pending</button>
+                    )}
                   </div>
                   {request.status === "pending" ? <input value={notes[request.id] || ""} onChange={(event) => setNotes((current) => ({ ...current, [request.id]: event.target.value }))} placeholder="Optional note if the address needs correction" className="mt-4 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-purple-500" /> : request.review_note ? <p className="mt-3 text-sm text-zinc-400">Note: {request.review_note}</p> : null}
                 </article>
@@ -177,6 +198,8 @@ export default function AdminPage() {
               {!requests.length ? <p className="rounded-2xl border border-dashed border-zinc-700 p-10 text-center text-zinc-500">No Gmail access requests yet.</p> : null}
             </div>
           </>
+        ) : tab === "notifications" ? (
+          <AdminNotifications users={users} adminApi={adminApi} ago={ago} />
         ) : (
           <>
             <h1 className="text-3xl font-extrabold">Users</h1>

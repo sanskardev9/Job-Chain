@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
+import { switchMode } from "../lib/adminMode";
 
 const BOOKMARKS_UPDATED_EVENT = "jobchain:bookmarks-updated";
 
@@ -201,6 +202,11 @@ export default function Navbar() {
           <div className="flex items-center gap-2 lg:ml-3 lg:border-l lg:border-zinc-800 lg:pl-4">
             {user.email?.toLowerCase() === "sanskar.dev09@gmail.com" ? (
               <Link href="/admin" aria-label="Admin" title="Admin"
+                onClick={(event) => {
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                  event.preventDefault();
+                  switchMode(router, true);
+                }}
                 className="inline-flex rounded-lg border border-purple-500/40 p-2 text-purple-300 transition hover:bg-purple-500/10">
                 <ShieldCheck size={16} />
               </Link>
